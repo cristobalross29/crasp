@@ -14,9 +14,9 @@ describe("smoke", () => {
     const program = new Command();
 
     program.command("init");
-    program.command("run");
+    program.command("run <scenario>");
     program.command("list");
-    program.command("report");
+    program.command("report <run-id>");
 
     const commandNames = program.commands.map((command) => command.name());
 
