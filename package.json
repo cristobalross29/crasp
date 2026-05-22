@@ -1,0 +1,34 @@
+{
+  "name": "agentfence",
+  "version": "0.1.0",
+  "description": "Local-first CLI for testing AI agent safety behavior",
+  "type": "module",
+  "bin": {
+    "agentfence": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/cli/index.ts --format esm --dts --out-dir dist",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsup src/cli/index.ts --watch"
+  },
+  "dependencies": {
+    "chalk": "4.1.2",
+    "cli-table3": "file:tools/cli-table3",
+    "commander": "7.2.0",
+    "js-yaml": "4.1.1",
+    "micromatch": "4.0.8",
+    "nanoid": "3.3.11",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "file:tools/types-js-yaml",
+    "@types/micromatch": "file:tools/types-micromatch",
+    "@types/node": "20.19.35",
+    "tsup": "file:tools/tsup",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@10.26.0"
+}
