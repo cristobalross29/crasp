@@ -121,6 +121,12 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   // Claude Code MCP integration
   await setupMcpIntegration(root);
 
+  // Claude Code PreToolUse Write hook — always-on, harness-level enforcement
+  await ensureClaudeCodeWriteHook(root);
+
+  // CLAUDE.md documentation block
+  await ensureClaudeMdSection(root, options.force);
+
   console.log(chalk.green("\nAgentFence setup complete."));
   console.log(
     chalk.dim(
@@ -222,6 +228,106 @@ async function setupMcpIntegration(root: string): Promise<void> {
 
   await writeFile(mcpJsonPath, `${JSON.stringify(mcpConfig, null, 2)}\n`);
   console.log(chalk.dim("Wrote .mcp.json with agentfence MCP server"));
+}
+
+async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
+  const claudeDir = path.join(root, ".claude");
+  const settingsPath = path.join(claudeDir, "settings.json");
+
+  let settings: Record<string, unknown> = {};
+  if (await exists(settingsPath)) {
+    try {
+      const raw = await readFile(settingsPath, "utf8");
+      settings = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // malformed — start fresh
+    }
+  }
+
+  const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
+  const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
+  const alreadyInstalled = preToolUse.some(
+    (h) =>
+      typeof h === "object" &&
+      h !== null &&
+      "matcher" in h &&
+      (h as Record<string, unknown>).matcher === "Write" &&
+      JSON.stringify(h).includes("agentfence")
+  );
+
+  if (alreadyInstalled) {
+    console.log(chalk.yellow("Skipped .claude/settings.json write hook (already exists)"));
+    return;
+  }
+
+  const bin = resolveAgentFenceBin();
+  // Extract content from the Write tool's JSON payload and pipe it to check --stdin.
+  // Stdout goes to Claude Code (shown to Claude on block); stderr captures BLOCKED messages.
+  const hookCommand =
+    `CONTENT=$(python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('content',''))" 2>/dev/null || true); ` +
+    `if [ -n "$CONTENT" ]; then echo "$CONTENT" | ${bin} check --stdin 2>&1; fi`;
+
+  preToolUse.push({
+    matcher: "Write",
+    hooks: [{ type: "command", command: hookCommand }],
+  });
+
+  hooks.PreToolUse = preToolUse;
+  settings.hooks = hooks;
+
+  await mkdir(claudeDir, { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  console.log(chalk.dim("Updated .claude/settings.json with AgentFence write hook"));
+}
+
+// ── CLAUDE.md documentation block ────────────────────────────────────────────
+
+const CLAUDE_MD_SENTINEL_START = "<!-- agentfence:start -->";
+const CLAUDE_MD_SENTINEL_END = "<!-- agentfence:end -->";
+
+const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
+## AgentFence
+
+Write-time policy enforcement is active via a PreToolUse hook. Policy rules live in \`agentfence.policy.yml\`.
+Run \`agentfence status\` to verify configuration. Run \`agentfence scan .\` to audit the project.
+${CLAUDE_MD_SENTINEL_END}`;
+
+export async function ensureClaudeMdSection(
+  root: string,
+  force = false
+): Promise<void> {
+  const claudeMdPath = path.join(root, "CLAUDE.md");
+
+  if (!(await exists(claudeMdPath))) {
+    await writeFile(claudeMdPath, `${CLAUDE_MD_SECTION}\n`);
+    console.log(chalk.dim("Wrote CLAUDE.md with AgentFence section"));
+    return;
+  }
+
+  const raw = await readFile(claudeMdPath, "utf8");
+
+  if (raw.includes(CLAUDE_MD_SENTINEL_START)) {
+    if (!force) {
+      console.log(chalk.yellow("Skipped CLAUDE.md (AgentFence section already present, use --force to overwrite)"));
+      return;
+    }
+    const startIdx = raw.indexOf(CLAUDE_MD_SENTINEL_START);
+    const endIdx = raw.indexOf(CLAUDE_MD_SENTINEL_END);
+    if (endIdx === -1) {
+      const suffix = raw.endsWith("\n") ? "\n" : "\n\n";
+      await writeFile(claudeMdPath, `${raw}${suffix}${CLAUDE_MD_SECTION}\n`);
+    } else {
+      const before = raw.slice(0, startIdx).replace(/\n{3,}$/, "\n\n");
+      const after = raw.slice(endIdx + CLAUDE_MD_SENTINEL_END.length).replace(/^\n{3,}/, "\n\n");
+      await writeFile(claudeMdPath, `${before}${CLAUDE_MD_SECTION}${after}`);
+    }
+    console.log(chalk.dim("Updated AgentFence section in CLAUDE.md"));
+    return;
+  }
+
+  const separator = raw.endsWith("\n\n") ? "" : raw.endsWith("\n") ? "\n" : "\n\n";
+  await writeFile(claudeMdPath, `${raw}${separator}${CLAUDE_MD_SECTION}\n`);
+  console.log(chalk.dim("Updated CLAUDE.md with AgentFence section"));
 }
 
 async function exists(filePath: string): Promise<boolean> {
