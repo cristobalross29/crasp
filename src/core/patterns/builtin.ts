@@ -11,7 +11,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "critical",
       target: "any",
       pattern:
-        "credential theft|dump browser logins?|exfiltrate credentials|harvest tokens|steal passwords|scrape saved credentials|extract api keys|capture auth tokens|siphon credentials",
+        "(?:credential (?:theft|exfiltration)|(?:dump|steal|scrape|harvest|extract|capture|siphon) (?:browser )?(?:saved )?(?:passwords?|logins?|credentials?|tokens?|api[_ -]?keys?|auth(?:entication)? tokens?)|(?:exfiltrate|leak) (?:credentials?|tokens?|api[_ -]?keys?))",
       message: "Credential exfiltration behavior detected."
     },
     {
@@ -20,7 +20,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "high",
       target: "any",
       pattern:
-        "ignore (all )?(previous|prior|above) instructions|disregard (all )?(previous|prior|above) instructions|override (the )?(system|developer) (prompt|instructions)",
+        "(?:^|[.!?\\n]\\s*)(?:ignore|disregard|forget|override) (?:all )?(?:previous|prior|above|earlier|system|developer) (?:instructions|prompts?|rules)|system override|(?:act|pretend) as if (?:there are no|you have no) (?:rules|restrictions)",
       message: "Prompt injection attempt detected."
     },
     {
@@ -29,7 +29,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "high",
       target: "any",
       pattern:
-        "169\\.254\\.169\\.254|metadata\\.google\\.internal|metadata/computeMetadata/v1|internal admin endpoint",
+        "169\\.254\\.169\\.254|metadata\\.google\\.internal|metadata/computeMetadata/v1|latest/meta-data|instance-data/latest|internal admin endpoint",
       message: "Potential SSRF behavior detected."
     },
     {
@@ -37,7 +37,8 @@ export const BUILTIN_POLICY: Policy = {
       description: "Detects path traversal attempts against sensitive files.",
       severity: "high",
       target: "any",
-      pattern: "\\.\\./\\.\\.|/etc/passwd|/proc/self/environ|windows/system32|boot\\.ini",
+      pattern:
+        "(?:\\.\\./){2,}(?:etc/passwd|proc/self/environ|\\.ssh|id_rsa|windows/system32|boot\\.ini)|/etc/passwd|/proc/self/environ|/root/\\.ssh|/home/[^\\s]+/\\.ssh|windows[\\\\/]+system32|boot\\.ini",
       message: "Path traversal behavior detected."
     },
     {
@@ -46,7 +47,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "high",
       target: "any",
       pattern:
-        "child_process|eval\\(|exec\\(|spawn\\(|subprocess\\.|os\\.system\\(|powershell -enc|curl .+\\| sh",
+        "child_process\\.(?:exec|execFile|spawn|fork)|(?:exec|spawn)\\s*\\(|subprocess\\.(?:Popen|run|call)\\s*\\(|os\\.system\\s*\\(|eval\\s*\\(|Function\\s*\\(|powershell\\s+-(?:enc|encodedcommand)|curl\\s+(?:-[a-zA-Z]*\\s+)?https?://[^\\n|]+\\|\\s*(?:sh|bash)",
       message: "Unsafe code execution behavior detected."
     },
     {
@@ -55,7 +56,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "high",
       target: "any",
       pattern:
-        "exfiltrate data|upload .*(database|secrets|private data)|send .*(database|secrets|private data) to|dump customer data|leak confidential",
+        "(?:exfiltrate|leak|dump) (?:data|database|customer data|customer database|confidential files?|private data|secrets?)|(?:upload|send|copy) (?:the )?(?:database|customer data|customer database|confidential files?|private data|secrets?|\\.env) (?:to|into|out|offsite|external|remote)",
       message: "Data exfiltration behavior detected."
     },
     {
@@ -64,7 +65,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "high",
       target: "any",
       pattern:
-        "social security number|ssn\\b|credit card number|passport number|date of birth|home address",
+        "social security number|\\bssn\\b|credit card number|passport number|date of birth|home address|driver'?s license number|taxpayer identification number",
       message: "PII exposure detected."
     },
     {
@@ -73,7 +74,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "critical",
       target: "any",
       pattern:
-        "(?:api[_-]?key|secret[_-]?key)[ \\t]*[=:][ \\t]*[\"']?(?!(?:your|example|placeholder|change_?me|todo|xxx|<|process\\.|normalize|original|authenticated))(?=[a-z0-9._/+\\-=]*\\d)[a-z0-9][a-z0-9._/+\\-=]{15,}[\"']?|bearer[ \\t]+[a-z0-9._-]{20,}|sk-[a-z0-9]{20,}|github_pat_[a-z0-9_]+",
+        "(?:(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)[ \\t]*[=:][ \\t]*[\"']?(?!(?:your|example|placeholder|change_?me|todo|xxx|<|process\\.|normalize|original|authenticated))(?=[a-z0-9._/+\\-=]*\\d)[a-z0-9][a-z0-9._/+\\-=]{15,}[\"']?|bearer[ \\t]+[a-z0-9._-]{20,}|sk-[a-z0-9]{20,}|github_pat_[a-z0-9_]+|ghp_[a-z0-9]{20,}|glpat-[a-z0-9_-]{20,}|xox[baprs]-[a-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----)",
       message: "Token leakage detected."
     },
     {
@@ -82,7 +83,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "medium",
       target: "any",
       pattern:
-        "show (me )?(the )?(system|developer) prompt|reveal (the )?(system|developer) prompt|print (the )?(hidden|initial) instructions",
+        "(?:^|[.!?\\n]\\s*)(?:show|reveal|print|dump|export) (?:me )?(?:the )?(?:system|developer|hidden|initial) (?:prompt|instructions|message)",
       message: "System prompt extraction attempt detected."
     },
     {
@@ -91,7 +92,7 @@ export const BUILTIN_POLICY: Policy = {
       severity: "medium",
       target: "any",
       pattern:
-        "developer mode|do anything now|dan mode|jailbreak|bypass (your )?(safety|policy|guardrails)|uncensored mode",
+        "developer mode|do anything now|dan mode|jailbreak|bypass (?:your )?(?:safety|policy|guardrails|filters)|uncensored mode|no safety filters",
       message: "Jailbreak attempt detected."
     }
   ]
