@@ -35,11 +35,21 @@ export interface PolicyRule {
   message?: string;
 }
 
+export type ExceptionOp = "read" | "write" | "edit" | "any";
+
+export interface PolicyException {
+  id?: string;
+  path: string;
+  ops: ExceptionOp[];
+  reason?: string;
+}
+
 export interface Policy {
   id: string;
   name: string;
   version?: string;
   rules: PolicyRule[];
+  exceptions?: PolicyException[];
 }
 
 export interface FileScanMatch {
