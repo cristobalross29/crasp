@@ -130,9 +130,10 @@ rules:
     message: "Credential theft guidance detected."
 ```
 
-When a project policy exists at `agentfence.policy.yml`, AgentFence merges it
-with the built-in security policy. Built-in rules win on duplicate rule IDs so
-local policy files can add coverage without weakening the baseline.
+For `check`, `scan`, and `policy` commands, AgentFence merges
+`agentfence.policy.yml` with the built-in security policy. Built-in rules win
+on duplicate rule IDs so local policy files can add coverage without weakening
+the baseline.
 
 ## Built-In Rule Categories
 
@@ -256,8 +257,7 @@ pnpm test
 Before publishing:
 
 ```sh
-pnpm prepublishOnly
-npm pack --dry-run
+pnpm release:check
 ```
 
 ## Operational Notes
