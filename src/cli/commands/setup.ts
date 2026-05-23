@@ -167,9 +167,10 @@ async function markHooksEnabled(root: string): Promise<void> {
 
 async function ensureGitignoreEntry(root: string): Promise<void> {
   const gitignorePath = path.join(root, ".gitignore");
-  // .agentfence/ holds run artifacts; .mcp.json holds machine-specific binary
-  // paths and must not be committed — each developer runs `agentfence setup`.
-  const entries = [".agentfence/", ".mcp.json"];
+  // .agentfence/ holds run artifacts; .mcp.json and .claude/settings.json hold
+  // machine-specific binary paths and must not be committed — each developer
+  // runs `agentfence setup` to generate them locally.
+  const entries = [".agentfence/", ".mcp.json", ".claude/settings.json"];
 
   if (!(await exists(gitignorePath))) {
     await writeFile(gitignorePath, entries.map((e) => `${e}\n`).join(""));

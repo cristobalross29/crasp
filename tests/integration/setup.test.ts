@@ -29,6 +29,7 @@ describe("setupCommand", () => {
     expect(config?.builtinPolicies).toContain("agentfence-builtin-security");
     expect(config?.hooksEnabled).toBe(true);
     expect(gitignore).toContain(".agentfence/");
+    expect(gitignore).toContain(".claude/settings.json");
     expect(hookStatus.healthy).toBe(true);
   });
 
