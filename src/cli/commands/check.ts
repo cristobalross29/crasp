@@ -7,19 +7,27 @@ import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.js";
+import { checkSensitivePath } from "../../core/scanner/sensitive-paths.js";
 import type { FileScanResult, Policy, Severity } from "../../types/index.js";
+import type { HookTool } from "../../core/scanner/sensitive-paths.js";
 
 const execFileAsync = promisify(execFile);
 
 interface CheckOptions {
   staged?: boolean;
   stdin?: boolean;
+  hookInput?: string;
 }
 
 export async function checkCommand(
   paths: string[] = [],
   options: CheckOptions = {}
 ): Promise<void> {
+  if (options.hookInput) {
+    await runHookInputCheck(options.hookInput as HookTool);
+    return;
+  }
+
   if (options.stdin) {
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
@@ -136,4 +144,78 @@ function hasSeverityAtOrAbove(
       (match) => severityRank[match.severity] >= severityRank[threshold]
     )
   );
+}
+
+async function runHookInputCheck(toolName: HookTool): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  } catch {
+    // Malformed JSON payload — allow the tool call to proceed rather than false-blocking
+    process.exit(0);
+  }
+
+  const toolInput = (payload.tool_input ?? {}) as Record<string, unknown>;
+  const filePath = (toolInput.file_path as string | undefined) ?? "";
+
+  // 1. Sensitive file path check
+  const pathResult = checkSensitivePath(filePath, toolName);
+  if (pathResult) {
+    if (pathResult.tier !== "advisory") {
+      // Claude Code requires permissionDecision:"deny" (exit 0 + JSON) to hard-block.
+      // Exit code 1 is treated as a non-blocking hook error by Claude Code.
+      console.log(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: `[agentfence] ${pathResult.ruleId} (${pathResult.tier}): ${pathResult.message}`,
+          },
+        })
+      );
+      process.exit(0);
+    }
+    // advisory: context injected into Claude's next message, tool proceeds
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          additionalContext: `[agentfence] WARNING (${pathResult.ruleId}): ${pathResult.message}`,
+        },
+      })
+    );
+  }
+
+  // 2. Content policy check (Write and Edit only — Read has no content yet)
+  let content = "";
+  if (toolName === "Write") content = (toolInput.content as string | undefined) ?? "";
+  else if (toolName === "Edit") content = (toolInput.new_string as string | undefined) ?? "";
+
+  if (content) {
+    const policy = await loadMergedPolicy();
+    const result = scanContent(content, policy);
+    const blocking = result.matches.filter(
+      (m) => m.severity === "high" || m.severity === "critical"
+    );
+    if (blocking.length > 0) {
+      const reasons = blocking
+        .map((m) => `${m.ruleId} (${m.severity}): ${m.match}`)
+        .join("; ");
+      console.log(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: `[agentfence] content policy violation — ${reasons}`,
+          },
+        })
+      );
+      process.exit(0);
+    }
+  }
+
+  process.exit(0);
 }
