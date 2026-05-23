@@ -24,6 +24,16 @@ rules:
     target: assistant
     pattern: "steal (browser )?passwords?|credential theft|dump (chrome|firefox|browser|saved) (login|credential|password)|exfiltrat(e|ing) (credentials?|tokens?|cookies?|passwords?|secrets?)|extract (saved|stored|browser) (credentials?|passwords?|tokens?|logins?)|harvest (credentials?|passwords?|auth tokens?)"
     message: "Credential theft guidance detected."
+
+# Exceptions: pre-approve specific file access to bypass the ask dialog.
+# Examples:
+# exceptions:
+#   - path: ".env.local"
+#     ops: [read]
+#     reason: "Claude needs to read config for setup tasks"
+#   - path: ".env.local"
+#     ops: [write, edit]
+#     reason: "I manage .env.local directly with Claude's help"
 `;
 
 const STARTER_SCENARIOS: Record<string, string> = {
@@ -230,6 +240,22 @@ async function setupMcpIntegration(root: string): Promise<void> {
   console.log(chalk.dim("Wrote .mcp.json with agentfence MCP server"));
 }
 
+const HOOK_TOOLS = ["Write", "Edit", "Read"] as const;
+type HookToolName = (typeof HOOK_TOOLS)[number];
+
+function isAgentfenceHook(h: unknown, tool: HookToolName): boolean {
+  return (
+    typeof h === "object" &&
+    h !== null &&
+    (h as Record<string, unknown>).matcher === tool &&
+    JSON.stringify(h).includes("agentfence")
+  );
+}
+
+function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
+  return isAgentfenceHook(h, tool) && JSON.stringify(h).includes("--hook-input");
+}
+
 async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
   const claudeDir = path.join(root, ".claude");
   const settingsPath = path.join(claudeDir, "settings.json");
@@ -246,38 +272,37 @@ async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
 
   const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
-  const alreadyInstalled = preToolUse.some(
-    (h) =>
-      typeof h === "object" &&
-      h !== null &&
-      "matcher" in h &&
-      (h as Record<string, unknown>).matcher === "Write" &&
-      JSON.stringify(h).includes("agentfence")
+
+  // If all three new-format hooks are already installed, nothing to do
+  const allInstalled = HOOK_TOOLS.every((tool) =>
+    preToolUse.some((h) => isNewFormatHook(h, tool))
   );
 
-  if (alreadyInstalled) {
+  if (allInstalled) {
     console.log(chalk.yellow("Skipped .claude/settings.json write hook (already exists)"));
     return;
   }
 
+  // Remove stale agentfence hooks for Write/Edit/Read (old format or partial install)
+  const filteredHooks = preToolUse.filter(
+    (h) => !HOOK_TOOLS.some((tool) => isAgentfenceHook(h, tool))
+  );
+
   const bin = resolveAgentFenceBin();
-  // Extract content from the Write tool's JSON payload and pipe it to check --stdin.
-  // Stdout goes to Claude Code (shown to Claude on block); stderr captures BLOCKED messages.
-  const hookCommand =
-    `CONTENT=$(python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('content',''))" 2>/dev/null || true); ` +
-    `if [ -n "$CONTENT" ]; then echo "$CONTENT" | ${bin} check --stdin 2>&1; fi`;
 
-  preToolUse.push({
-    matcher: "Write",
-    hooks: [{ type: "command", command: hookCommand }],
-  });
+  for (const tool of HOOK_TOOLS) {
+    filteredHooks.push({
+      matcher: tool,
+      hooks: [{ type: "command", command: `${bin} check --hook-input ${tool}` }],
+    });
+  }
 
-  hooks.PreToolUse = preToolUse;
+  hooks.PreToolUse = filteredHooks;
   settings.hooks = hooks;
 
   await mkdir(claudeDir, { recursive: true });
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(chalk.dim("Updated .claude/settings.json with AgentFence write hook"));
+  console.log(chalk.dim("Updated .claude/settings.json with AgentFence hooks (Write, Edit, Read)"));
 }
 
 // ── CLAUDE.md documentation block ────────────────────────────────────────────
@@ -288,8 +313,10 @@ const CLAUDE_MD_SENTINEL_END = "<!-- agentfence:end -->";
 const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
 ## AgentFence
 
-Write-time policy enforcement is active via a PreToolUse hook. Policy rules live in \`agentfence.policy.yml\`.
-Run \`agentfence status\` to verify configuration. Run \`agentfence scan .\` to audit the project.
+Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, and Read.
+Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
+Content written to files is also scanned for leaked secrets and policy violations.
+Policy rules live in \`agentfence.policy.yml\`. Run \`agentfence status\` to verify configuration.
 ${CLAUDE_MD_SENTINEL_END}`;
 
 export async function ensureClaudeMdSection(

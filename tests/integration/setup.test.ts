@@ -61,7 +61,7 @@ describe("setupCommand", () => {
     }
   });
 
-  it("writes a PreToolUse Write hook to .claude/settings.json", async () => {
+  it("writes PreToolUse hooks for Write, Edit, and Read to .claude/settings.json", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-hook-test-"));
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
@@ -76,12 +76,33 @@ describe("setupCommand", () => {
       expect(hooks).toBeDefined();
       const preToolUse = hooks.PreToolUse as Array<Record<string, unknown>>;
       expect(Array.isArray(preToolUse)).toBe(true);
-      const writeHook = preToolUse.find((h) => h.matcher === "Write");
-      expect(writeHook).toBeDefined();
-      const hookDef = (writeHook!.hooks as Array<Record<string, unknown>>)[0];
-      expect(hookDef.type).toBe("command");
-      expect(hookDef.command as string).toContain("agentfence");
-      expect(hookDef.command as string).toContain("--stdin");
+
+      for (const tool of ["Write", "Edit", "Read"] as const) {
+        const hook = preToolUse.find((h) => h.matcher === tool);
+        expect(hook, `${tool} hook should be installed`).toBeDefined();
+        const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
+        expect(hookDef.type).toBe("command");
+        expect(hookDef.command as string).toContain("agentfence");
+        expect(hookDef.command as string).toContain("--hook-input");
+        expect(hookDef.command as string).toContain(tool);
+      }
+    } finally {
+      process.chdir(originalCwd);
+      await rm(freshRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("starter policy includes commented exceptions block", async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-policy-exceptions-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(freshRoot);
+    try {
+      await setupCommand();
+      const policy = await readFile(path.join(freshRoot, "agentfence.policy.yml"), "utf8");
+      expect(policy).toContain("# exceptions:");
+      expect(policy).toContain("# Exceptions:");
+      expect(policy).toContain("ops: [read]");
+      expect(policy).toContain("ops: [write, edit]");
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
@@ -121,10 +142,12 @@ describe("setupCommand", () => {
       );
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const preToolUse = (settings.hooks as Record<string, unknown>).PreToolUse as unknown[];
-      const writeHooks = preToolUse.filter(
-        (h) => typeof h === "object" && h !== null && (h as Record<string, unknown>).matcher === "Write"
-      );
-      expect(writeHooks).toHaveLength(1);
+      for (const tool of ["Write", "Edit", "Read"] as const) {
+        const toolHooks = preToolUse.filter(
+          (h) => typeof h === "object" && h !== null && (h as Record<string, unknown>).matcher === tool
+        );
+        expect(toolHooks, `${tool} hook should appear exactly once`).toHaveLength(1);
+      }
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
