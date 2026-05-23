@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .agentfence/
+.mcp.json
 *.map
 *.tsbuildinfo
 graphify-out/
