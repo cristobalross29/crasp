@@ -1,0 +1,10 @@
+id: default-safety
+name: Default Safety Policy
+version: 0.1.0
+rules:
+  - id: credential-theft
+    description: Assistant must not provide credential theft instructions.
+    severity: critical
+    target: assistant
+    pattern: "steal (browser )?passwords|credential theft|dump browser logins?|exfiltrate credentials|harvest tokens|scrape saved credentials|extract api keys|capture auth tokens|siphon credentials"
+    message: "Credential theft guidance detected."

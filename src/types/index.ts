@@ -42,6 +42,56 @@ export interface Policy {
   rules: PolicyRule[];
 }
 
+export interface FileScanMatch {
+  ruleId: string;
+  ruleName: string;
+  severity: Severity;
+  line: number;
+  column: number;
+  match: string;
+  context: string;
+}
+
+export interface FileScanResult {
+  filePath: string;
+  matches: FileScanMatch[];
+  scanned: boolean;
+  error?: string;
+}
+
+export interface ScanSummary {
+  totalFiles: number;
+  scannedFiles: number;
+  matchedFiles: number;
+  totalMatches: number;
+  bySeverity: Record<Severity, number>;
+}
+
+export interface AgentFenceConfig {
+  version: string;
+  policyPath?: string;
+  hooksEnabled: boolean;
+  hookPath?: string;
+  builtinPolicies: string[];
+  createdAt: string;
+}
+
+export interface HookStatus {
+  installed: boolean;
+  managed: boolean;
+  path?: string;
+  healthy?: boolean;
+}
+
+export interface ProjectStatus {
+  initialized: boolean;
+  config?: AgentFenceConfig;
+  hookStatus: HookStatus;
+  policyPath?: string;
+  scenarioCount: number;
+  runCount: number;
+}
+
 export interface Trace {
   steps: ScenarioStep[];
 }
