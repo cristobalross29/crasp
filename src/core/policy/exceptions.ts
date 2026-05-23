@@ -19,7 +19,6 @@ export function matchesException(
   return exceptions.some((ex) => {
     const pathMatches = micromatch.isMatch(basename, ex.path);
     if (!pathMatches) return false;
-    const opsToCheck = ex.ops.length === 0 ? ["any"] : ex.ops;
-    return opsToCheck.includes("any") || opsToCheck.includes(normalizedOp);
+    return ex.ops.includes("any") || ex.ops.includes(normalizedOp);
   });
 }

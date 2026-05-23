@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const CLI = path.resolve("dist/index.js");
@@ -185,6 +187,56 @@ describe("check --hook-input Read", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe("");
+  });
+});
+
+describe("check --hook-input exceptions bypass", () => {
+  it("exits silently when file matches a policy exception (write op)", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-e2e-"));
+    const policyPath = path.join(tmpDir, "agentfence.policy.yml");
+    try {
+      await writeFile(
+        policyPath,
+        `id: test-policy\nname: Test\nrules: []\nexceptions:\n  - path: ".env.local"\n    ops: [write, edit]\n    reason: "Deliberate access"\n`
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Write"],
+        {
+          input: makePayload({ file_path: "/project/.env.local", content: "X=1" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still fires ask dialog when op is NOT in the exception", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-op-mismatch-"));
+    const policyPath = path.join(tmpDir, "agentfence.policy.yml");
+    try {
+      await writeFile(
+        policyPath,
+        `id: test-policy\nname: Test\nrules: []\nexceptions:\n  - path: ".env.local"\n    ops: [read]\n`
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Write"],
+        {
+          input: makePayload({ file_path: "/project/.env.local", content: "X=1" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(parseOutput(result.stdout).isAsk).toBe(true);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

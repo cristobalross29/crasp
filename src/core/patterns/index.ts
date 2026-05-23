@@ -18,6 +18,7 @@ export function mergeWithBuiltin(policy?: Policy): Policy {
     id: policy?.id ?? BUILTIN_POLICY.id,
     name: policy?.name ?? BUILTIN_POLICY.name,
     version: policy?.version ?? BUILTIN_POLICY.version,
-    rules: Array.from(rulesById.values())
+    rules: Array.from(rulesById.values()),
+    exceptions: policy?.exceptions ?? [],
   };
 }
