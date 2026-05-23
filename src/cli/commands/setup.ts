@@ -151,23 +151,24 @@ async function markHooksEnabled(root: string): Promise<void> {
 
 async function ensureGitignoreEntry(root: string): Promise<void> {
   const gitignorePath = path.join(root, ".gitignore");
-  const entry = ".agentfence/";
+  // .agentfence/ holds run artifacts; .mcp.json holds machine-specific binary
+  // paths and must not be committed — each developer runs `agentfence setup`.
+  const entries = [".agentfence/", ".mcp.json"];
 
   if (!(await exists(gitignorePath))) {
-    await writeFile(gitignorePath, `${entry}\n`);
+    await writeFile(gitignorePath, entries.map((e) => `${e}\n`).join(""));
     console.log(chalk.dim("Wrote .gitignore"));
     return;
   }
 
   const raw = await readFile(gitignorePath, "utf8");
   const lines = raw.split(/\r?\n/).map((line) => line.trim());
+  const missing = entries.filter((e) => !lines.includes(e));
 
-  if (lines.includes(entry)) {
-    return;
-  }
+  if (missing.length === 0) return;
 
   const suffix = raw.endsWith("\n") ? "" : "\n";
-  await writeFile(gitignorePath, `${raw}${suffix}${entry}\n`);
+  await writeFile(gitignorePath, `${raw}${suffix}${missing.join("\n")}\n`);
   console.log(chalk.dim("Updated .gitignore"));
 }
 
