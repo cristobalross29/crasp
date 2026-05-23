@@ -6,19 +6,42 @@ import { printTerminalScanResults } from "../scan-output.js";
 import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
-import { scanDirectory, scanFiles } from "../../core/scanner/index.js";
+import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.js";
 import type { FileScanResult, Policy, Severity } from "../../types/index.js";
 
 const execFileAsync = promisify(execFile);
 
 interface CheckOptions {
   staged?: boolean;
+  stdin?: boolean;
 }
 
 export async function checkCommand(
   paths: string[] = [],
   options: CheckOptions = {}
 ): Promise<void> {
+  if (options.stdin) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+    const content = Buffer.concat(chunks).toString("utf8");
+
+    const policy = await loadMergedPolicy();
+    const result = scanContent(content, policy);
+    const blocking = result.matches.filter(
+      (m) => m.severity === "high" || m.severity === "critical"
+    );
+
+    if (blocking.length > 0) {
+      for (const m of blocking) {
+        process.stderr.write(
+          `[agentfence] BLOCKED — ${m.ruleId} (${m.severity}): ${m.match}\n`
+        );
+      }
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   const policy = await loadMergedPolicy();
   const filePaths = options.staged ? await stagedFiles() : paths;
   const results =

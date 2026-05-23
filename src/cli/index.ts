@@ -47,6 +47,7 @@ program
   .command("check [paths...]")
   .description("check files for AgentFence policy matches")
   .option("--staged", "scan staged git files")
+  .option("--stdin", "read content from stdin and check against policy")
   .action(checkCommand);
 
 program
