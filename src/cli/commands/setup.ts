@@ -1,4 +1,5 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import chalk from "chalk";
 import {
@@ -170,38 +171,56 @@ async function ensureGitignoreEntry(root: string): Promise<void> {
   console.log(chalk.dim("Updated .gitignore"));
 }
 
-async function setupMcpIntegration(root: string): Promise<void> {
-  const claudeDir = path.join(root, ".claude");
-  const settingsPath = path.join(claudeDir, "settings.json");
+function resolveAgentFenceBin(): string {
+  // GUI apps on macOS don't inherit ~/.zshrc PATH, so bare "agentfence" may not resolve.
+  // Use the absolute path when we can find it; fall back to bare name for npm global installs.
+  try {
+    const resolved = execFileSync("which", ["agentfence"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (resolved) return resolved;
+  } catch {
+    // not on PATH in this shell — try well-known pnpm global bin
+  }
+  const pnpmBin = process.env["PNPM_HOME"];
+  if (pnpmBin) {
+    return path.join(pnpmBin, "agentfence");
+  }
+  return "agentfence";
+}
 
-  let settings: Record<string, unknown> = {};
-  if (await exists(settingsPath)) {
+async function setupMcpIntegration(root: string): Promise<void> {
+  // Claude Code reads MCP servers from .mcp.json at the project root.
+  // ~/.claude/settings.json is for Claude Code UI settings (hooks, permissions) — not MCP.
+  const mcpJsonPath = path.join(root, ".mcp.json");
+
+  let mcpConfig: { mcpServers: Record<string, unknown> } = { mcpServers: {} };
+  if (await exists(mcpJsonPath)) {
     try {
-      const raw = await readFile(settingsPath, "utf8");
-      settings = JSON.parse(raw) as Record<string, unknown>;
+      const raw = await readFile(mcpJsonPath, "utf8");
+      mcpConfig = JSON.parse(raw) as { mcpServers: Record<string, unknown> };
+      mcpConfig.mcpServers ??= {};
     } catch {
-      // malformed JSON — start fresh to avoid corrupting the file further
+      // malformed JSON — start fresh
     }
   }
 
-  const mcpServers =
-    (settings.mcpServers as Record<string, unknown> | undefined) ?? {};
-
-  if ("agentfence" in mcpServers) {
+  if ("agentfence" in mcpConfig.mcpServers) {
     console.log(
-      chalk.yellow("Skipped .claude/settings.json MCP entry (already exists)")
+      chalk.yellow("Skipped .mcp.json MCP entry (already exists)")
     );
     return;
   }
 
-  mcpServers.agentfence = { command: "agentfence", args: ["mcp"] };
-  settings.mcpServers = mcpServers;
+  mcpConfig.mcpServers["agentfence"] = {
+    type: "stdio",
+    command: resolveAgentFenceBin(),
+    args: ["mcp"],
+  };
 
-  await mkdir(claudeDir, { recursive: true });
-  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(
-    chalk.dim("Updated .claude/settings.json with agentfence MCP server")
-  );
+  await writeFile(mcpJsonPath, `${JSON.stringify(mcpConfig, null, 2)}\n`);
+  console.log(chalk.dim("Wrote .mcp.json with agentfence MCP server"));
 }
 
 async function exists(filePath: string): Promise<boolean> {

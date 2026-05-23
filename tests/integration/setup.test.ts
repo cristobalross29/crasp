@@ -32,7 +32,7 @@ describe("setupCommand", () => {
     expect(hookStatus.healthy).toBe(true);
   });
 
-  it("writes agentfence MCP entry to .claude/settings.json", async () => {
+  it("writes agentfence MCP entry to .mcp.json", async () => {
     const freshRoot = await mkdtemp(
       path.join(os.tmpdir(), "af-setup-mcp-test-")
     );
@@ -42,17 +42,19 @@ describe("setupCommand", () => {
 
     try {
       await setupCommand();
-      const raw = await readFile(
-        path.join(freshRoot, ".claude", "settings.json"),
-        "utf8"
-      );
-      const settings = JSON.parse(raw) as Record<string, unknown>;
-      const mcpServers = settings.mcpServers as Record<string, unknown>;
-      expect(mcpServers).toBeDefined();
-      expect(mcpServers["agentfence"]).toEqual({
-        command: "agentfence",
-        args: ["mcp"],
-      });
+      const raw = await readFile(path.join(freshRoot, ".mcp.json"), "utf8");
+      const mcpConfig = JSON.parse(raw) as {
+        mcpServers: Record<string, unknown>;
+      };
+      const entry = mcpConfig.mcpServers["agentfence"] as Record<
+        string,
+        unknown
+      >;
+      expect(entry).toBeDefined();
+      expect(entry["type"]).toBe("stdio");
+      expect(typeof entry["command"]).toBe("string");
+      expect((entry["command"] as string).length).toBeGreaterThan(0);
+      expect(entry["args"]).toEqual(["mcp"]);
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
