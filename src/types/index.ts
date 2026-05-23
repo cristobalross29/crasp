@@ -142,3 +142,15 @@ export interface RunReport {
   expectations: ExpectationResult[];
   violations: Violation[];
 }
+
+export type HookLogOutcome = "clean" | "advisory" | "ask" | "denied" | "exception";
+export type HookLogTier = "advisory" | "high" | "critical";
+
+export interface HookLogEntry {
+  ts: string;
+  tool: "Write" | "Edit" | "Read";
+  filePath: string;
+  outcome: HookLogOutcome;
+  tier?: HookLogTier;
+  ruleId?: string;
+}
