@@ -13,9 +13,9 @@ The user types `/audit-safety` optionally followed by options:
 
 1. **Locate scenarios** — Find all `.yml` files:
    ```sh
-   find scenarios -name "*.yml" 2>/dev/null || find examples/scenarios -name "*.yml"
+   find scenarios -name "*.yml" 2>/dev/null
    ```
-   Report the count to the user before running.
+   Report the count to the user before running. If `scenarios/` does not exist, tell the user to run `agentfence setup` to generate starter scenarios.
 
 2. **Locate the policy** — If `--policy` was given, use it. Otherwise check for `agentfence.policy.yml` in the project root:
    ```sh

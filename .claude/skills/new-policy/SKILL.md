@@ -45,12 +45,12 @@ rules:
 
 4. **Write the file** — Save to the destination path using the Write tool.
 
-5. **Validate** — Run an existing scenario (or the example) against the new policy to confirm at least one rule fires as expected:
+5. **Validate** — Run an existing scenario against the new policy to confirm at least one rule fires as expected:
    ```sh
    pnpm build 2>/dev/null || true
-   node dist/index.js run examples/scenarios/safe-refusal-demo.yml --policy <path-to-new-policy>
+   node dist/index.js run scenarios/safe-refusal-demo.yml --policy <path-to-new-policy>
    ```
-   Report the output to the user.
+   If `scenarios/safe-refusal-demo.yml` does not exist, use any `.yml` file under `scenarios/`. Report the output to the user.
 
 ## Rules
 

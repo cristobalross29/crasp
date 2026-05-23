@@ -6,13 +6,13 @@ Build AgentFence and run one or more scenarios, then interpret the results for t
 
 The user types `/run-fence` optionally followed by a scenario path or glob, e.g.:
 - `/run-fence` — run all scenarios in `scenarios/`
-- `/run-fence examples/scenarios/safe-refusal-demo.yml`
-- `/run-fence scenarios/sql-injection.yml --policy examples/policies/default-safety.yml`
+- `/run-fence scenarios/safe-refusal-demo.yml`
+- `/run-fence scenarios/sql-injection.yml --policy custom.policy.yml`
 
 ## Steps
 
 1. **Parse arguments** — Extract from the user's message:
-   - Scenario path(s) or glob (default: `scenarios/*.yml` if the directory exists, else `examples/scenarios/*.yml`)
+   - Scenario path(s) or glob (default: `scenarios/*.yml`)
    - Policy path (default: none — the CLI auto-loads `agentfence.policy.yml` if present)
    - Output format (default: `terminal`)
 
@@ -48,7 +48,7 @@ The user types `/run-fence` optionally followed by a scenario path or glob, e.g.
 ## Rules
 
 - Always build before running — never assume `dist/` is current.
-- If `scenarios/` does not exist, fall back to `examples/scenarios/` and note this to the user.
+- If `scenarios/` does not exist, tell the user to run `agentfence setup` first to generate starter scenarios.
 - Do not silently swallow non-zero exit codes — a `failed` status is meaningful.
 - If multiple scenarios are run and some pass and some fail, report both clearly; do not summarize as "some issues found."
 - If the user asks to fix a failing scenario, use the `/new-scenario` skill to regenerate it, or edit the YAML directly based on the failure message.
