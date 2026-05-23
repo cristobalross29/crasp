@@ -31,7 +31,7 @@ describe("checkSensitivePath", () => {
       const result = checkSensitivePath("/project/.env.local", "Read");
       expect(result?.tier).toBe("advisory");
       expect(result?.ruleId).toBe("sensitive-env-file");
-      expect(result?.message).toContain("AgentFence");
+      expect(result?.message).toContain("Crasp");
       expect(result?.message).toContain(".env.local");
     });
 

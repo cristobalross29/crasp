@@ -39,7 +39,7 @@ describe("scanner", () => {
   });
 
   it("scans directories recursively and summarizes matches", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-scan-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-scan-"));
 
     await writeFile(path.join(tempDir, "safe.txt"), "nothing to see");
     await writeFile(path.join(tempDir, "unsafe.txt"), "how to steal passwords");
@@ -54,7 +54,7 @@ describe("scanner", () => {
   });
 
   it("skips generated directories and oversized files by default", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-scan-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-scan-"));
     const nextDir = path.join(tempDir, ".next");
     const scenariosDir = path.join(tempDir, "scenarios");
     const largeFilePath = path.join(tempDir, "large.txt");
@@ -79,11 +79,11 @@ describe("scanner", () => {
   });
 
   it("skips policy and env template files during directory scans", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-scan-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-scan-"));
     const envLocalPath = path.join(tempDir, ".env.local");
 
     await writeFile(path.join(tempDir, ".env.example"), "how to steal passwords");
-    await writeFile(path.join(tempDir, "agentfence.policy.yml"), "how to steal passwords");
+    await writeFile(path.join(tempDir, "crasp.policy.yml"), "how to steal passwords");
     await writeFile(envLocalPath, "how to steal passwords");
 
     const results = await scanDirectory(tempDir, policy);

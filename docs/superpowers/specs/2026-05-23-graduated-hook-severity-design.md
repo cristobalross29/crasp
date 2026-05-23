@@ -1,4 +1,4 @@
-# AgentFence: Graduated Hook Severity Design
+# Crasp: Graduated Hook Severity Design
 
 **Date:** 2026-05-23  
 **Status:** Approved — ready for implementation
@@ -7,7 +7,7 @@
 
 ## Problem
 
-AgentFence's current PreToolUse hooks either hard-block (deny) or silently advise. This creates two failure modes:
+Crasp's current PreToolUse hooks either hard-block (deny) or silently advise. This creates two failure modes:
 
 1. Hard blocks feel like a cage — developers can't authorize legitimate AI access to their own files.
 2. Silent advisories are invisible to the developer — they only reach Claude's context, not the user's screen.
@@ -20,7 +20,7 @@ The original `.env.local` test case showed both failures at once: the block used
 
 ### Core Philosophy
 
-AgentFence is an advisor, not a gatekeeper. Developers always have the final word. The tool's job is to make the risk **visible and clear** before the developer decides — not to decide for them.
+Crasp is an advisor, not a gatekeeper. Developers always have the final word. The tool's job is to make the risk **visible and clear** before the developer decides — not to decide for them.
 
 ### Data Flow
 
@@ -54,7 +54,7 @@ Exceptions are checked **before** sensitive path rules — pre-approved paths ne
 
 | Tier | Hook output | What the developer sees |
 |---|---|---|
-| **advisory** | `additionalContext` with relay instruction | Claude says in its next message: *"AgentFence flagged this file as sensitive — I'll make sure not to include any secret values in my response."* |
+| **advisory** | `additionalContext` with relay instruction | Claude says in its next message: *"Crasp flagged this file as sensitive — I'll make sure not to include any secret values in my response."* |
 | **high** | `permissionDecision: "ask"` | Claude Code ask dialog — ⚠️ warning tone, reason, allow/deny |
 | **critical** | `permissionDecision: "ask"` | Claude Code ask dialog — 🚨 urgent tone, explains the exact risk, allow/deny |
 
@@ -80,20 +80,20 @@ Templates (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`) are excl
 Phrased as an instruction to Claude so it relays the message naturally:
 
 ```
-AgentFence: You are reading .env.local, which likely contains secrets (API keys, 
-passwords, tokens). Please tell the user: "AgentFence flagged this file as sensitive 
+Crasp: You are reading .env.local, which likely contains secrets (API keys, 
+passwords, tokens). Please tell the user: "Crasp flagged this file as sensitive 
 — I'll make sure not to include any secret values in my response."
 ```
 
 ### High Ask Dialog (`permissionDecision: "ask"`)
 
 ```
-⚠️  AgentFence Warning
+⚠️  Crasp Warning
 
 Writing to .env.local — this file likely contains API keys and secrets.
 Accidentally modifying it could expose credentials or break your app.
 
-To pre-approve this, add to agentfence.policy.yml:
+To pre-approve this, add to crasp.policy.yml:
   exceptions:
     - path: ".env.local"
       ops: [write, edit]
@@ -102,14 +102,14 @@ To pre-approve this, add to agentfence.policy.yml:
 ### Critical Ask Dialog (`permissionDecision: "ask"`)
 
 ```
-🚨  AgentFence — Critical Security Risk
+🚨  Crasp — Critical Security Risk
 
 Writing to server.pem — this is a cryptographic private key or certificate.
 Modifying this file could compromise your server's identity and all SSL connections.
 
 This is a HIGH RISK action. Only proceed if you are certain.
 
-To pre-approve this, add to agentfence.policy.yml:
+To pre-approve this, add to crasp.policy.yml:
   exceptions:
     - path: "server.pem"
       ops: [write, edit]
@@ -119,7 +119,7 @@ To pre-approve this, add to agentfence.policy.yml:
 
 ## Policy Exceptions Schema
 
-Added to the existing `agentfence.policy.yml` as a top-level `exceptions` array:
+Added to the existing `crasp.policy.yml` as a top-level `exceptions` array:
 
 ```yaml
 id: my-policy
@@ -163,7 +163,7 @@ policySchema = existing + {
 
 ## Starter Policy Update
 
-`agentfence setup` will generate a starter policy that includes a commented-out exceptions section so developers immediately know where to look:
+`crasp setup` will generate a starter policy that includes a commented-out exceptions section so developers immediately know where to look:
 
 ```yaml
 id: default-safety

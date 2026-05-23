@@ -10,13 +10,13 @@ import {
 
 describe("config", () => {
   it("returns undefined when no config exists", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-config-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-config-"));
 
     await expect(loadConfig(tempDir)).resolves.toBeUndefined();
   });
 
-  it("writes and loads .agentfence/config.json", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-config-"));
+  it("writes and loads .crasp/config.json", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-config-"));
     const config = {
       ...DEFAULT_CONFIG,
       hooksEnabled: true,
@@ -26,7 +26,7 @@ describe("config", () => {
     const configPath = await writeConfig(config, tempDir);
     const loaded = await loadConfig(tempDir);
 
-    expect(configPath).toBe(path.join(tempDir, ".agentfence", "config.json"));
+    expect(configPath).toBe(path.join(tempDir, ".crasp", "config.json"));
     expect(loaded).toEqual(config);
   });
 });

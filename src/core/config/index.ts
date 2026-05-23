@@ -1,22 +1,22 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AgentFenceConfig } from "../../types/index.js";
+import type { CraspConfig } from "../../types/index.js";
 
-export const DEFAULT_CONFIG: AgentFenceConfig = {
+export const DEFAULT_CONFIG: CraspConfig = {
   version: "1",
-  policyPath: "agentfence.policy.yml",
+  policyPath: "crasp.policy.yml",
   hooksEnabled: false,
   hookPath: ".git/hooks/pre-commit",
-  builtinPolicies: ["agentfence-builtin-security"],
+  builtinPolicies: ["crasp-builtin-security"],
   createdAt: "1970-01-01T00:00:00.000Z"
 };
 
 export async function loadConfig(
   dir = process.cwd()
-): Promise<AgentFenceConfig | undefined> {
+): Promise<CraspConfig | undefined> {
   try {
     const raw = await readFile(configPath(dir), "utf8");
-    return JSON.parse(raw) as AgentFenceConfig;
+    return JSON.parse(raw) as CraspConfig;
   } catch (error) {
     if (isNotFoundError(error)) {
       return undefined;
@@ -27,7 +27,7 @@ export async function loadConfig(
 }
 
 export async function writeConfig(
-  config: AgentFenceConfig,
+  config: CraspConfig,
   dir = process.cwd()
 ): Promise<string> {
   const targetPath = configPath(dir);
@@ -39,7 +39,7 @@ export async function writeConfig(
 }
 
 function configPath(dir: string): string {
-  return path.join(dir, ".agentfence", "config.json");
+  return path.join(dir, ".crasp", "config.json");
 }
 
 function isNotFoundError(error: unknown): boolean {

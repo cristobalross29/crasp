@@ -3,7 +3,7 @@ import path from "node:path";
 import type { RunReport } from "../types/index.js";
 
 export function defaultStorageDir(): string {
-  return path.resolve(".agentfence", "runs");
+  return path.resolve(".crasp", "runs");
 }
 
 export async function saveRunReport(

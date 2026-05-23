@@ -43,7 +43,7 @@ async function resolvePolicyPath(policyPath?: string): Promise<string | undefine
     return path.resolve(policyPath);
   }
 
-  const defaultPolicyPath = path.resolve("agentfence.policy.yml");
+  const defaultPolicyPath = path.resolve("crasp.policy.yml");
 
   return (await policyExists(defaultPolicyPath)) ? defaultPolicyPath : undefined;
 }

@@ -1,14 +1,14 @@
 # npm Publish Checklist
 
-Use this checklist before publishing `agentfence` to npm.
+Use this checklist before publishing `crasp` to npm.
 
 ## Registry And Naming
 
-- `npm view agentfence name version description --json` returned `E404` on
+- `npm view crasp name version description --json` returned `E404` on
   2026-05-23, so the exact npm package name appeared available at that time.
-- There is an existing PyPI package and GitHub organization using the
-  AgentFence name. Decide whether the first npm release should stay unscoped as
-  `agentfence` or move to a scoped package before publishing.
+- Public web search found older acronym/scientific uses of CRASP, but did not
+  surface an active AI-security product using `crasp`. This is not legal advice;
+  confirm trademark comfort before publishing.
 
 ## Preflight
 
@@ -37,7 +37,7 @@ pnpm typecheck
 npm pack --dry-run
 ```
 
-Expected tarball contents for `agentfence@0.1.0`:
+Expected tarball contents for `crasp@0.1.0`:
 
 - `LICENSE`
 - `README.md`
@@ -62,8 +62,8 @@ the release from a clean environment before publishing.
 4. Verify the release:
 
    ```sh
-   npm view agentfence version
-   npm exec agentfence -- --help
+   npm view crasp version
+   npm exec crasp -- --help
    ```
 
 Prefer publishing from CI with npm provenance once the repository has a release

@@ -23,7 +23,7 @@ describe("handleScan", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-scan-test-"));
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), "crasp-scan-test-"));
   });
 
   afterEach(async () => {

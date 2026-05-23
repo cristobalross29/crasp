@@ -36,9 +36,9 @@ rules:
 export async function initCommand(options: InitOptions = {}): Promise<void> {
   await mkdir("scenarios", { recursive: true });
   await writeStarterFile("scenarios/safe-refusal-demo.yml", scenarioTemplate, options.force);
-  await writeStarterFile("agentfence.policy.yml", policyTemplate, options.force);
+  await writeStarterFile("crasp.policy.yml", policyTemplate, options.force);
 
-  console.log(chalk.green("Created AgentFence starter files."));
+  console.log(chalk.green("Created Crasp starter files."));
 }
 
 async function writeStarterFile(

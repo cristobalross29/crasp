@@ -5,7 +5,7 @@ export async function mcpCommand(): Promise<void> {
     await startMcpServer();
   } catch (error) {
     process.stderr.write(
-      `AgentFence MCP server failed to start: ${
+      `Crasp MCP server failed to start: ${
         error instanceof Error ? error.message : String(error)
       }\n`
     );

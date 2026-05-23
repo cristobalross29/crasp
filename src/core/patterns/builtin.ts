@@ -1,8 +1,8 @@
 import type { Policy } from "../../types/index.js";
 
 export const BUILTIN_POLICY: Policy = {
-  id: "agentfence-builtin-security",
-  name: "AgentFence Built-in Security Policy",
+  id: "crasp-builtin-security",
+  name: "Crasp Built-in Security Policy",
   version: "1.0.0",
   rules: [
     {

@@ -165,7 +165,7 @@ describe("check --hook-input Read", () => {
     expect(out.isAsk).toBe(false);
     expect(out.isAdvisory).toBe(true);
     expect(out.additionalContext).toContain(".env.local");
-    expect(out.additionalContext).toContain("AgentFence");
+    expect(out.additionalContext).toContain("Crasp");
   });
 
   it("shows ask dialog (critical) when reading a .pem file", () => {
@@ -193,7 +193,7 @@ describe("check --hook-input Read", () => {
 describe("check --hook-input exceptions bypass", () => {
   it("exits silently when file matches a policy exception (write op)", async () => {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-e2e-"));
-    const policyPath = path.join(tmpDir, "agentfence.policy.yml");
+    const policyPath = path.join(tmpDir, "crasp.policy.yml");
     try {
       await writeFile(
         policyPath,
@@ -217,7 +217,7 @@ describe("check --hook-input exceptions bypass", () => {
 
   it("still fires ask dialog when op is NOT in the exception", async () => {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-op-mismatch-"));
-    const policyPath = path.join(tmpDir, "agentfence.policy.yml");
+    const policyPath = path.join(tmpDir, "crasp.policy.yml");
     try {
       await writeFile(
         policyPath,

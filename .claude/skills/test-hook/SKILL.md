@@ -1,6 +1,6 @@
 # Skill: test-hook
 
-Simulate a Claude Code PreToolUse hook payload and show exactly what AgentFence would do — which tier fired, what response was sent, and what would be logged.
+Simulate a Claude Code PreToolUse hook payload and show exactly what Crasp would do — which tier fired, what response was sent, and what would be logged.
 
 ## When this skill is invoked
 
@@ -46,7 +46,7 @@ The user types `/test-hook` followed by a tool and file path, optionally with co
    - Which rule or path check triggered (if any)
    - What tier it is (advisory / high / critical)
    - What the developer would see in Claude Code
-   - What would be logged to `.agentfence/events.ndjson`
+   - What would be logged to `.crasp/events.ndjson`
 
 6. **Check the hook log** — show what was just written:
    ```sh
@@ -61,7 +61,7 @@ Testing: Write .env.local
 Result: ASK DIALOG (tier: high, rule: sensitive-env-file)
 
 What Claude Code shows the developer:
-  ⚠️  AgentFence Warning
+  ⚠️  Crasp Warning
 
   Writing to .env.local — this file likely contains API keys and secrets.
   ...
@@ -69,7 +69,7 @@ What Claude Code shows the developer:
 What would be logged:
   { ts: "...", tool: "Write", filePath: ".env.local", outcome: "ask", tier: "high", ruleId: "sensitive-env-file" }
 
-To pre-approve this path, add to agentfence.policy.yml:
+To pre-approve this path, add to crasp.policy.yml:
   exceptions:
     - path: ".env.local"
       ops: [write, edit]
@@ -79,6 +79,6 @@ To pre-approve this path, add to agentfence.policy.yml:
 ## Rules
 
 - Always build before running — never assume `dist/` is current.
-- If the payload contains real secrets (e.g. an actual API key), note that it will be logged to `.agentfence/events.ndjson`.
-- If the user wants to test an exception, remind them to add the exception to `agentfence.policy.yml` in the working directory, then rerun.
+- If the payload contains real secrets (e.g. an actual API key), note that it will be logged to `.crasp/events.ndjson`.
+- If the user wants to test an exception, remind them to add the exception to `crasp.policy.yml` in the working directory, then rerun.
 - Show the raw JSON response alongside the human-readable interpretation — developers often want to see the exact hook output.

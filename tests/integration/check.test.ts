@@ -17,7 +17,7 @@ describe("checkCommand", () => {
   });
 
   it("fails when a scanned path contains a high or critical match", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-check-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-check-"));
     const filePath = path.join(tempDir, "unsafe.txt");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -31,7 +31,7 @@ describe("checkCommand", () => {
   });
 
   it("scans staged git files with --staged", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-check-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-check-"));
     const filePath = path.join(tempDir, "unsafe.txt");
 
     await execFileAsync("git", ["init"], { cwd: tempDir });

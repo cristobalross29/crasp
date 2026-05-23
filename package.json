@@ -1,10 +1,10 @@
 {
-  "name": "agentfence",
+  "name": "crasp",
   "version": "0.1.0",
-  "description": "Local-first CLI for testing AI agent safety behavior",
+  "description": "Local-first CLI for testing AI agent transcripts against scenario expectations and safety policies",
   "type": "module",
   "bin": {
-    "agentfence": "dist/index.js"
+    "crasp": "dist/index.js"
   },
   "types": "./dist/index.d.ts",
   "files": [
@@ -21,7 +21,9 @@
     "llm",
     "security",
     "cli",
-    "pre-commit"
+    "pre-commit",
+    "prompt-injection",
+    "guardrails"
   ],
   "scripts": {
     "build": "tsup src/cli/index.ts --format esm --dts --out-dir dist",
@@ -51,12 +53,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cristobalross29/agentfence.git"
+    "url": "git+https://github.com/cristobalross29/crasp.git"
   },
   "bugs": {
-    "url": "https://github.com/cristobalross29/agentfence/issues"
+    "url": "https://github.com/cristobalross29/crasp/issues"
   },
-  "homepage": "https://github.com/cristobalross29/agentfence#readme",
+  "homepage": "https://github.com/cristobalross29/crasp#readme",
   "license": "MIT",
   "packageManager": "pnpm@9.15.9"
 }

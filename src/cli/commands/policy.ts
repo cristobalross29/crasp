@@ -29,7 +29,7 @@ async function loadMergedPolicy(): Promise<Policy> {
   const config = await loadConfig();
   const resolvedPolicyPath = config?.policyPath
     ? path.resolve(config.policyPath)
-    : path.resolve("agentfence.policy.yml");
+    : path.resolve("crasp.policy.yml");
   const userPolicy = (await policyExists(resolvedPolicyPath))
     ? await loadPolicy(resolvedPolicyPath)
     : undefined;

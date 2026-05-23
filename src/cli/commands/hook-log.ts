@@ -144,7 +144,7 @@ export async function hookLogCommand(options: HookLogOptions = {}): Promise<void
   // ── empty log ─────────────────────────────────────────────────────────────
   if (allEntries.length === 0) {
     console.log(
-      "No activity recorded yet. AgentFence hooks will log here automatically."
+      "No activity recorded yet. Crasp hooks will log here automatically."
     );
     return;
   }

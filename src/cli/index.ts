@@ -18,8 +18,8 @@ import { hookLogCommand } from "./commands/hook-log.js";
 const program = new Command();
 
 program
-  .name("agentfence")
-  .description("Local-first CLI for testing AI agent safety behavior")
+  .name("crasp")
+  .description("Local-first CLI for testing AI agent transcripts against scenario expectations and safety policies")
   .version("0.1.0");
 
 program
@@ -30,8 +30,8 @@ program
 
 program
   .command("setup")
-  .description("initialize AgentFence project configuration")
-  .option("-f, --force", "overwrite existing AgentFence config")
+  .description("initialize Crasp project configuration")
+  .option("-f, --force", "overwrite existing Crasp config")
   .action(setupCommand);
 
 program
@@ -46,7 +46,7 @@ program.command("list").description("list past runs").action(listCommand);
 
 program
   .command("check [paths...]")
-  .description("check files for AgentFence policy matches")
+  .description("check files for Crasp policy matches")
   .option("--staged", "scan staged git files")
   .option("--stdin", "read content from stdin and check against policy")
   .option("--hook-input <tool>", "check a PreToolUse hook JSON payload from stdin (Write, Edit, Read)")
@@ -67,12 +67,12 @@ program
 
 program
   .command("status")
-  .description("show AgentFence project status")
+  .description("show Crasp project status")
   .action(statusCommand);
 
 program
   .command("hook <install|uninstall|status>")
-  .description("manage the AgentFence pre-commit hook")
+  .description("manage the Crasp pre-commit hook")
   .action(hookCommand);
 
 program
@@ -89,12 +89,12 @@ program
 
 program
   .command("mcp")
-  .description("start the AgentFence MCP server (stdio transport)")
+  .description("start the Crasp MCP server (stdio transport)")
   .action(mcpCommand);
 
 program
   .command("hook-log")
-  .description("show AgentFence hook activity log")
+  .description("show Crasp hook activity log")
   .option("--days <n>", "number of days to show (default: 2)", "2")
   .option("--summary", "print only the 30-day summary stats")
   .option("--json", "emit raw NDJSON lines to stdout")

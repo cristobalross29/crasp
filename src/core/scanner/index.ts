@@ -16,7 +16,7 @@ export interface ScanDirectoryOptions {
 }
 
 const defaultExcludedDirs = new Set([
-  ".agentfence",
+  ".crasp",
   ".cache",
   ".claude",
   ".codex",
@@ -41,8 +41,8 @@ const defaultExcludedFiles = new Set([
   ".env.example",
   ".env.sample",
   ".env.template",
-  "agentfence.policy.yml",
-  "agentfence.policy.yaml",
+  "crasp.policy.yml",
+  "crasp.policy.yaml",
   "tsconfig.tsbuildinfo"
 ]);
 

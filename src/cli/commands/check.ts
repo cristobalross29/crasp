@@ -44,7 +44,7 @@ export async function checkCommand(
     if (blocking.length > 0) {
       for (const m of blocking) {
         process.stderr.write(
-          `[agentfence] BLOCKED — ${m.ruleId} (${m.severity}): ${m.match}\n`
+          `[crasp] BLOCKED — ${m.ruleId} (${m.severity}): ${m.match}\n`
         );
       }
       process.exit(1);
@@ -61,9 +61,9 @@ export async function checkCommand(
 
   printTerminalScanResults(results, {
     emptyMessage: (scannedFiles) =>
-      `AgentFence check passed. Scanned ${scannedFiles} files.`,
+      `Crasp check passed. Scanned ${scannedFiles} files.`,
     foundMessage: (totalMatches, matchedFiles) =>
-      `AgentFence check found ${totalMatches} matches in ${matchedFiles} files.`
+      `Crasp check found ${totalMatches} matches in ${matchedFiles} files.`
   });
 
   process.exitCode = hasSeverityAtOrAbove(results, "high") ? 1 : 0;
@@ -121,7 +121,7 @@ async function loadMergedPolicy(): Promise<Policy> {
   const config = await loadConfig();
   const configuredPolicyPath = config?.policyPath
     ? path.resolve(config.policyPath)
-    : path.resolve("agentfence.policy.yml");
+    : path.resolve("crasp.policy.yml");
   const userPolicy =
     configuredPolicyPath && (await policyExists(configuredPolicyPath))
       ? await loadPolicy(configuredPolicyPath)
@@ -221,7 +221,7 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason: `[agentfence] content policy violation — ${reasons}`,
+            permissionDecisionReason: `[crasp] content policy violation — ${reasons}`,
           },
         })
       );

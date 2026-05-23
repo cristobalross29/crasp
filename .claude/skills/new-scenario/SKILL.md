@@ -1,6 +1,6 @@
 # Skill: new-scenario
 
-Generate a scenario YAML file for AgentFence from a natural-language description of the AI behavior to test.
+Generate a scenario YAML file for Crasp from a natural-language description of the AI behavior to test.
 
 ## When this skill is invoked
 

@@ -22,7 +22,7 @@ export async function getProjectStatus(
     hookStatus: await getHookStatus(dir),
     policyPath,
     scenarioCount: await countScenarioFiles(path.join(dir, "scenarios")),
-    runCount: await countRunDirs(path.join(dir, ".agentfence", "runs"))
+    runCount: await countRunDirs(path.join(dir, ".crasp", "runs"))
   };
 }
 
@@ -32,7 +32,7 @@ async function resolvePolicyPath(
 ): Promise<string | undefined> {
   const candidates = [
     configuredPolicyPath ? path.resolve(dir, configuredPolicyPath) : undefined,
-    path.join(dir, "agentfence.policy.yml")
+    path.join(dir, "crasp.policy.yml")
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {

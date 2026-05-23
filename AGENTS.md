@@ -1,4 +1,4 @@
-# AgentFence - Agent Collaboration Guide
+# Crasp - Agent Collaboration Guide
 
 This document defines how Claude Code and Codex are used in this project, their
 division of responsibility, and the workflows they follow.
@@ -29,7 +29,7 @@ Use Claude Code for:
 - Authoring and running tests
 - Explaining codebase structure or data flow
 - Generating new scenarios or policies via `/new-scenario` and `/new-policy`
-- Running AgentFence and interpreting results via `/run-fence` and
+- Running Crasp and interpreting results via `/run-fence` and
   `/audit-safety`
 - Refactoring, type fixes, and dependency changes
 
@@ -42,7 +42,7 @@ Project skills:
 | --- | --- | --- |
 | new-scenario | `/new-scenario` | Generate a scenario YAML from a natural-language description |
 | new-policy | `/new-policy` | Generate a policy YAML from rule descriptions |
-| run-fence | `/run-fence` | Build the project and run AgentFence against one or more scenarios |
+| run-fence | `/run-fence` | Build the project and run Crasp against one or more scenarios |
 | audit-safety | `/audit-safety` | Run all scenarios under `scenarios/` with the default policy |
 
 ### Codex
@@ -97,7 +97,7 @@ the exact failing test path or the specific function to implement.
 ### Debugging a Failing Run
 
 1. Run `/run-fence <scenario>` to see the full report.
-2. Inspect `.agentfence/runs/<run-id>/report.json` for raw violation and
+2. Inspect `.crasp/runs/<run-id>/report.json` for raw violation and
    expectation data.
 3. If the root cause is unclear, use `/codex:rescue` with the run ID and failing
    expectation IDs.

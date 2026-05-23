@@ -3,7 +3,7 @@ import path from "node:path";
 import chalk from "chalk";
 import type { HookStatus } from "../../types/index.js";
 
-const sentinel = "# managed-by: agentfence";
+const sentinel = "# managed-by: crasp";
 
 export async function hookCommand(action: string): Promise<void> {
   if (action === "install") {
@@ -56,7 +56,7 @@ export async function installHook(dir = process.cwd()): Promise<void> {
     const raw = await readFile(hookPath, "utf8");
     const lines = raw.split(/\r?\n/);
     if (lines[1] !== sentinel) {
-      console.log(chalk.yellow("Pre-commit hook already exists and is not managed by AgentFence. Run `agentfence hook install` to overwrite it manually."));
+      console.log(chalk.yellow("Pre-commit hook already exists and is not managed by Crasp. Run `crasp hook install` to overwrite it manually."));
       return;
     }
   }
@@ -65,19 +65,19 @@ export async function installHook(dir = process.cwd()): Promise<void> {
     "#!/usr/bin/env sh",
     sentinel,
     "",
-    "if ! command -v agentfence >/dev/null 2>&1; then",
-    '  echo "[agentfence] not found on PATH — skipping pre-commit check"',
+    "if ! command -v crasp >/dev/null 2>&1; then",
+    '  echo "[crasp] not found on PATH — skipping pre-commit check"',
     "  exit 0",
     "fi",
     "",
-    "exec agentfence check --staged",
+    "exec crasp check --staged",
   ].join("\n");
 
   await mkdir(path.dirname(hookPath), { recursive: true });
   await writeFile(hookPath, `${content}\n`);
   await chmod(hookPath, 0o755);
 
-  console.log(chalk.green("Installed AgentFence pre-commit hook."));
+  console.log(chalk.green("Installed Crasp pre-commit hook."));
 }
 
 async function uninstallHook(): Promise<void> {
@@ -89,12 +89,12 @@ async function uninstallHook(): Promise<void> {
   }
 
   if (!status.managed) {
-    console.log(chalk.yellow("Pre-commit hook is not managed by AgentFence; leaving it in place."));
+    console.log(chalk.yellow("Pre-commit hook is not managed by Crasp; leaving it in place."));
     return;
   }
 
   await rm(status.path);
-  console.log(chalk.green("Removed AgentFence pre-commit hook."));
+  console.log(chalk.green("Removed Crasp pre-commit hook."));
 }
 
 async function exists(filePath: string): Promise<boolean> {

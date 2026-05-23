@@ -13,7 +13,7 @@ async function loadActivePolicy() {
   const config = await loadConfig();
   const policyPath = config?.policyPath
     ? path.resolve(config.policyPath)
-    : path.resolve("agentfence.policy.yml");
+    : path.resolve("crasp.policy.yml");
   const userPolicy = (await policyExists(policyPath))
     ? await loadPolicy(policyPath)
     : undefined;
@@ -22,11 +22,11 @@ async function loadActivePolicy() {
 
 export async function startMcpServer(): Promise<void> {
   const policy = await loadActivePolicy();
-  const server = new McpServer({ name: "agentfence", version: "0.1.0" });
+  const server = new McpServer({ name: "crasp", version: "0.1.0" });
 
   server.tool(
-    "agentfence_check",
-    "Check text content against the AgentFence safety policy. Returns violations and a recommended action: allow (no violations), warn (low/medium severity), or block (high/critical severity). Call this before writing files, committing code, or executing commands.",
+    "crasp_check",
+    "Check text content against the Crasp safety policy. Returns violations and a recommended action: allow (no violations), warn (low/medium severity), or block (high/critical severity). Call this before writing files, committing code, or executing commands.",
     {
       content: z
         .string()
@@ -47,7 +47,7 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
-    "agentfence_scan",
+    "crasp_scan",
     "Scan a file or directory for safety policy violations. Returns matches by file with rule ID, severity, and line location. Use to audit generated code before committing or to check a directory for leaked secrets.",
     {
       path: z
@@ -67,8 +67,8 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
-    "agentfence_policy",
-    "Get the active AgentFence policy rules. Returns rule IDs, descriptions, severity levels, and patterns. Use to understand what is being enforced before performing sensitive operations.",
+    "crasp_policy",
+    "Get the active Crasp policy rules. Returns rule IDs, descriptions, severity levels, and patterns. Use to understand what is being enforced before performing sensitive operations.",
     {},
     async () => {
       const result = await handlePolicy(policy);

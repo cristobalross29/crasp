@@ -77,7 +77,7 @@ export interface ScanSummary {
   bySeverity: Record<Severity, number>;
 }
 
-export interface AgentFenceConfig {
+export interface CraspConfig {
   version: string;
   policyPath?: string;
   hooksEnabled: boolean;
@@ -95,7 +95,7 @@ export interface HookStatus {
 
 export interface ProjectStatus {
   initialized: boolean;
-  config?: AgentFenceConfig;
+  config?: CraspConfig;
   hookStatus: HookStatus;
   policyPath?: string;
   scenarioCount: number;

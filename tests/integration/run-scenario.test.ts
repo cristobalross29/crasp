@@ -7,9 +7,9 @@ import { listRunReports } from "../../src/storage/index.js";
 
 describe("runScenario", () => {
   it("stores a local JSON report", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-"));
     const scenarioPath = path.join(tempDir, "scenario.yml");
-    const storageDir = path.join(tempDir, ".agentfence", "runs");
+    const storageDir = path.join(tempDir, ".crasp", "runs");
 
     await writeFile(
       scenarioPath,

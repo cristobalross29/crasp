@@ -1,4 +1,4 @@
-# AgentFence: Hook Activity Log Design
+# Crasp: Hook Activity Log Design
 
 **Date:** 2026-05-23  
 **Status:** Approved — ready for implementation
@@ -7,13 +7,13 @@
 
 ## Problem
 
-AgentFence fires PreToolUse hooks before every Write/Edit/Read operation in Claude Code, but the developer has no way to see what happened across a session or over time. The protection is invisible — there's no answer to "did AgentFence do anything today?" This makes the product feel inert even when it's actively protecting.
+Crasp fires PreToolUse hooks before every Write/Edit/Read operation in Claude Code, but the developer has no way to see what happened across a session or over time. The protection is invisible — there's no answer to "did Crasp do anything today?" This makes the product feel inert even when it's actively protecting.
 
 ---
 
 ## Goal
 
-Give developers a single command — `agentfence hook-log` — that shows them exactly what AgentFence protected them from, including a 30-day summary that makes the protection tangible and shareable.
+Give developers a single command — `crasp hook-log` — that shows them exactly what Crasp protected them from, including a 30-day summary that makes the protection tangible and shareable.
 
 ---
 
@@ -21,18 +21,18 @@ Give developers a single command — `agentfence hook-log` — that shows them e
 
 ### Storage: single append-only NDJSON file
 
-**Location:** `.agentfence/events.ndjson` (inside the project, gitignored)
+**Location:** `.crasp/events.ndjson` (inside the project, gitignored)
 
 Every hook invocation appends exactly one JSON line. The file is never locked for reads during writes. Writes are append-only — no read-modify-write, no race conditions even when Claude Code fires multiple hooks in parallel.
 
 **Why NDJSON over daily files / SQLite:**
 - One file = no file proliferation, no rotation logic, no user confusion
 - Append-only = safe for concurrent writes (no locking)
-- Human-readable: `tail -20 .agentfence/events.ndjson` works without tooling
+- Human-readable: `tail -20 .crasp/events.ndjson` works without tooling
 - No native dependencies (SQLite requires node-gyp)
 - Future-proof: file format is portable — a future team sync feature just uploads it
 
-**Lazy pruning:** When `agentfence hook-log` reads the file, it filters out entries older than 90 days in memory. If more than 10% of entries were pruned, it rewrites the file asynchronously (non-blocking). The file stays at ~2–3MB steady state automatically with no user intervention.
+**Lazy pruning:** When `crasp hook-log` reads the file, it filters out entries older than 90 days in memory. If more than 10% of entries were pruned, it rewrites the file asynchronously (non-blocking). The file stays at ~2–3MB steady state automatically with no user intervention.
 
 **Steady-state size estimate:** 100 events/day × 300 bytes × 90 days = ~2.7MB. After two years of heavy use without any pruning: ~21MB. With lazy pruning: stays under 3MB.
 
@@ -79,12 +79,12 @@ The `filePath` stored is the raw value from `tool_input.file_path` — not resol
 
 ---
 
-## `agentfence hook-log` command
+## `crasp hook-log` command
 
 ### Options
 
 ```
-agentfence hook-log [options]
+crasp hook-log [options]
 
   --days <n>     show last N days of events (default: 2 — today + yesterday)
   --summary      print only the 30-day summary stats, no event list
@@ -95,7 +95,7 @@ agentfence hook-log [options]
 ### Terminal output format
 
 ```
-AgentFence Activity Log
+Crasp Activity Log
 
 Today  (2026-05-23)
 ─────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ Last 30 days
 
 **filePath display:** show only the basename + one parent directory (e.g. `src/index.ts`, `.env.local`) to keep lines readable. Full path shown in `--json` mode.
 
-**No-events case:** if no events exist for a day, that day's section is omitted. If the entire log is empty, print: `No activity recorded yet. AgentFence hooks will log here automatically.`
+**No-events case:** if no events exist for a day, that day's section is omitted. If the entire log is empty, print: `No activity recorded yet. Crasp hooks will log here automatically.`
 
 **Session grouping** (display only, no storage change): events with a gap >30 minutes from the previous event are displayed with a thin separator line. This gives a natural "session" feel without requiring session IDs.
 
@@ -153,7 +153,7 @@ Last 30 days
 // src/core/hook-log/index.ts
 
 export function hookLogPath(root?: string): string
-// Returns: <root>/.agentfence/events.ndjson
+// Returns: <root>/.crasp/events.ndjson
 // root defaults to process.cwd()
 
 export async function appendHookLogEntry(
@@ -186,7 +186,7 @@ export async function readHookLog(
 
 ## Future extensions (not in scope for v1)
 
-- `agentfence status` — calls `readHookLog({ since: today })` and shows last 5 events inline
+- `crasp status` — calls `readHookLog({ since: today })` and shows last 5 events inline
 - Session end detection via PostToolUse or Claude Code session hooks (when available)
 - `decision` field — if Claude Code ever passes user allow/deny back to hooks
 - Team sync — upload `events.ndjson` to a shared endpoint for cross-developer visibility

@@ -5,7 +5,7 @@ export async function listCommand(): Promise<void> {
   const reports = await listRunReports();
 
   if (reports.length === 0) {
-    console.log("No AgentFence runs found.");
+    console.log("No Crasp runs found.");
     return;
   }
 

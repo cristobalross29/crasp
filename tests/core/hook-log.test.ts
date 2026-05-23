@@ -11,7 +11,7 @@ import {
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-hook-log-test-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "crasp-hook-log-test-"));
 });
 
 afterEach(async () => {
@@ -19,15 +19,15 @@ afterEach(async () => {
 });
 
 describe("hookLogPath", () => {
-  it("returns <root>/.agentfence/events.ndjson for a given root", () => {
+  it("returns <root>/.crasp/events.ndjson for a given root", () => {
     expect(hookLogPath("/my/project")).toBe(
-      "/my/project/.agentfence/events.ndjson"
+      "/my/project/.crasp/events.ndjson"
     );
   });
 
   it("defaults to process.cwd() when root is omitted", () => {
     expect(hookLogPath()).toBe(
-      path.join(process.cwd(), ".agentfence", "events.ndjson")
+      path.join(process.cwd(), ".crasp", "events.ndjson")
     );
   });
 });

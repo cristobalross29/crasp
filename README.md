@@ -1,6 +1,6 @@
-# AgentFence
+# Crasp
 
-AgentFence is a local-first CLI for testing recorded AI agent behavior against
+Crasp is a local-first CLI for testing recorded AI agent transcripts against
 scenario expectations and safety policies.
 
 Use it to keep agent transcripts, tool calls, generated files, and safety
@@ -16,25 +16,28 @@ No hosted service, database, or cloud account is required.
 - Applies policy rules to transcripts, stdin, files, directories, and hook
   payloads.
 - Ships built-in rules for common AI-agent security risks.
-- Writes local run reports to `.agentfence/runs/`.
+- Writes local run reports to `.crasp/runs/`.
 - Supports terminal, JSON, and HTML report output.
 - Provides pre-commit and Claude Code hook workflows.
 - Exposes an MCP server for tool-driven integrations.
 
+Crasp is deterministic by design. It uses explicit scenarios and regular
+expression policies so teams can review, version, and repeat every check.
+
 ## Install
 
-AgentFence requires Node.js 18 or newer.
+Crasp requires Node.js 18 or newer.
 
 ```sh
-npm install --save-dev agentfence
-npx agentfence --help
+npm install --save-dev crasp
+npx crasp --help
 ```
 
 From source:
 
 ```sh
-git clone git@github.com:cristobalross29/agentfence.git
-cd agentfence
+git clone git@github.com:cristobalross29/crasp.git
+cd crasp
 pnpm install
 pnpm build
 node dist/index.js --help
@@ -44,7 +47,7 @@ For local CLI development:
 
 ```sh
 pnpm link --global
-agentfence --help
+crasp --help
 ```
 
 ## Quick Start
@@ -52,27 +55,27 @@ agentfence --help
 Initialize a project:
 
 ```sh
-agentfence setup
-agentfence init
+crasp setup
+crasp init
 ```
 
 Run a scenario:
 
 ```sh
-agentfence run scenarios/safe-refusal-demo.yml
+crasp run scenarios/safe-refusal-demo.yml
 ```
 
 Check source files against the merged built-in and project policy:
 
 ```sh
-agentfence check src
-agentfence scan . --severity high
+crasp check src
+crasp scan . --severity high
 ```
 
 List available policy rules:
 
 ```sh
-agentfence policy list
+crasp policy list
 ```
 
 ## Scenarios
@@ -99,7 +102,7 @@ expectations:
 Run it:
 
 ```sh
-agentfence run examples/scenarios/safe-refusal-demo.yml --policy examples/policies/default-safety.yml
+crasp run examples/scenarios/safe-refusal-demo.yml --policy examples/policies/default-safety.yml
 ```
 
 Supported expectation types:
@@ -130,14 +133,14 @@ rules:
     message: "Credential theft guidance detected."
 ```
 
-For `check`, `scan`, and `policy` commands, AgentFence merges
-`agentfence.policy.yml` with the built-in security policy. Built-in rules win
+For `check`, `scan`, and `policy` commands, Crasp merges
+`crasp.policy.yml` with the built-in security policy. Built-in rules win
 on duplicate rule IDs so local policy files can add coverage without weakening
 the baseline.
 
 ## Built-In Rule Categories
 
-AgentFence currently ships built-in rules for:
+Crasp currently ships built-in rules for:
 
 - Credential exfiltration
 - Prompt injection
@@ -157,75 +160,75 @@ human security review or a dedicated secret-scanning engine.
 ## CLI Reference
 
 ```txt
-agentfence init                     scaffold scenario
-agentfence setup                    initialize AgentFence project configuration
-agentfence run <scenario>           run a scenario
-agentfence list                     list past runs
-agentfence check [paths...]         check files for policy matches
-agentfence scan [path]              scan a file or directory
-agentfence validate <kind> <file>   validate a scenario or policy YAML file
-agentfence status                   show project status
-agentfence hook <command>           manage the pre-commit hook
-agentfence policy <command>         list rules or check freeform text
-agentfence report <run-id>          reprint a run report
-agentfence mcp                      start the MCP server on stdio
-agentfence hook-log                 show hook activity
+crasp init                     scaffold scenario
+crasp setup                    initialize Crasp project configuration
+crasp run <scenario>           run a scenario
+crasp list                     list past runs
+crasp check [paths...]         check files for policy matches
+crasp scan [path]              scan a file or directory
+crasp validate <kind> <file>   validate a scenario or policy YAML file
+crasp status                   show project status
+crasp hook <command>           manage the pre-commit hook
+crasp policy <command>         list rules or check freeform text
+crasp report <run-id>          reprint a run report
+crasp mcp                      start the MCP server on stdio
+crasp hook-log                 show hook activity
 ```
 
 Useful examples:
 
 ```sh
-agentfence check --staged
-agentfence check --stdin
-agentfence scan . --format json --severity high
-agentfence validate scenario scenarios/safe-assistant.yml
-agentfence report <run-id> --format html --out report.html
-agentfence hook install
-agentfence hook-log --summary
+crasp check --staged
+crasp check --stdin
+crasp scan . --format json --severity high
+crasp validate scenario scenarios/safe-assistant.yml
+crasp report <run-id> --format html --out report.html
+crasp hook install
+crasp hook-log --summary
 ```
 
 ## Hooks
 
-AgentFence can run as a Git pre-commit check:
+Crasp can run as a Git pre-commit check:
 
 ```sh
-agentfence hook install
-agentfence check --staged
+crasp hook install
+crasp check --staged
 ```
 
 It also supports Claude Code `PreToolUse` payload checks:
 
 ```sh
-agentfence check --hook-input Write
-agentfence check --hook-input Edit
-agentfence check --hook-input Read
+crasp check --hook-input Write
+crasp check --hook-input Edit
+crasp check --hook-input Read
 ```
 
 Hook decisions are logged locally and can be inspected with:
 
 ```sh
-agentfence hook-log
-agentfence hook-log --summary
+crasp hook-log
+crasp hook-log --summary
 ```
 
 ## Reports
 
-Every scenario run is stored under `.agentfence/runs/<run-id>/report.json`.
+Every scenario run is stored under `.crasp/runs/<run-id>/report.json`.
 Reports can be reprinted later:
 
 ```sh
-agentfence list
-agentfence report <run-id>
-agentfence report <run-id> --format json
-agentfence report <run-id> --format html --out report.html
+crasp list
+crasp report <run-id>
+crasp report <run-id> --format json
+crasp report <run-id> --format html --out report.html
 ```
 
 ## MCP
 
-Start the AgentFence MCP server with stdio transport:
+Start the Crasp MCP server with stdio transport:
 
 ```sh
-agentfence mcp
+crasp mcp
 ```
 
 The MCP tools expose policy, scan, check, and action-oriented workflows for
@@ -237,7 +240,7 @@ This repository can be explored with Graphify. When `graphify-out/` exists,
 use:
 
 ```sh
-graphify query "AgentFence CLI policy scanner architecture"
+graphify query "Crasp CLI policy scanner architecture"
 graphify path "runScenario()" "Policy"
 graphify explain "Built-in Policy Merge Flow"
 ```
@@ -264,7 +267,7 @@ pnpm release:check
 
 - The scanner is regex-based and may report matches inside policy definitions,
   documentation, or test fixtures that intentionally contain unsafe strings.
-- `.agentfence/`, `dist/`, `node_modules/`, and `graphify-out/` are ignored by
+- `.crasp/`, `dist/`, `node_modules/`, and `graphify-out/` are ignored by
   default.
 - Policy patterns are JavaScript regular expressions and are evaluated
   case-insensitively.

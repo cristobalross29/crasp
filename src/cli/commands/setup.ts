@@ -8,7 +8,7 @@ import {
   writeConfig
 } from "../../core/config/index.js";
 import { installHook } from "./hook.js";
-import type { AgentFenceConfig } from "../../types/index.js";
+import type { CraspConfig } from "../../types/index.js";
 
 interface SetupOptions {
   force?: boolean;
@@ -83,30 +83,30 @@ expectations:
 
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   const root = process.cwd();
-  const agentFenceDir = path.join(root, ".agentfence");
-  const configPath = path.join(agentFenceDir, "config.json");
-  const policyPath = path.join(root, "agentfence.policy.yml");
+  const craspDir = path.join(root, ".crasp");
+  const configPath = path.join(craspDir, "config.json");
+  const policyPath = path.join(root, "crasp.policy.yml");
   const scenariosDir = path.join(root, "scenarios");
 
   // Config
-  await mkdir(agentFenceDir, { recursive: true });
+  await mkdir(craspDir, { recursive: true });
   if (options.force || !(await exists(configPath))) {
-    const config: AgentFenceConfig = {
+    const config: CraspConfig = {
       ...DEFAULT_CONFIG,
       createdAt: new Date().toISOString(),
     };
     await writeConfig(config, root);
-    console.log(chalk.dim("Wrote .agentfence/config.json"));
+    console.log(chalk.dim("Wrote .crasp/config.json"));
   } else {
-    console.log(chalk.yellow("Skipped .agentfence/config.json (already exists, use --force to overwrite)"));
+    console.log(chalk.yellow("Skipped .crasp/config.json (already exists, use --force to overwrite)"));
   }
 
   // Policy
   if (options.force || !(await exists(policyPath))) {
     await writeFile(policyPath, STARTER_POLICY);
-    console.log(chalk.dim("Wrote agentfence.policy.yml"));
+    console.log(chalk.dim("Wrote crasp.policy.yml"));
   } else {
-    console.log(chalk.yellow("Skipped agentfence.policy.yml (already exists)"));
+    console.log(chalk.yellow("Skipped crasp.policy.yml (already exists)"));
   }
 
   // Scenarios
@@ -137,14 +137,14 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   // CLAUDE.md documentation block
   await ensureClaudeMdSection(root, options.force);
 
-  console.log(chalk.green("\nAgentFence setup complete."));
+  console.log(chalk.green("\nCrasp setup complete."));
   console.log(
     chalk.dim(
       "\nNext steps:\n" +
-        "  agentfence status          — verify everything is wired up\n" +
-        "  agentfence run scenarios/safe-refusal-demo.yml — run your first scenario\n" +
-        "  agentfence scan .          — scan this project for security patterns\n" +
-        "  agentfence mcp             — start the MCP server for Claude Code"
+        "  crasp status          — verify everything is wired up\n" +
+        "  crasp run scenarios/safe-refusal-demo.yml — run your first scenario\n" +
+        "  crasp scan .          — scan this project for security patterns\n" +
+        "  crasp mcp             — start the MCP server for Claude Code"
     )
   );
 }
@@ -167,10 +167,10 @@ async function markHooksEnabled(root: string): Promise<void> {
 
 async function ensureGitignoreEntry(root: string): Promise<void> {
   const gitignorePath = path.join(root, ".gitignore");
-  // .agentfence/ holds run artifacts; .mcp.json and .claude/settings.json hold
+  // .crasp/ holds run artifacts; .mcp.json and .claude/settings.json hold
   // machine-specific binary paths and must not be committed — each developer
-  // runs `agentfence setup` to generate them locally.
-  const entries = [".agentfence/", ".mcp.json", ".claude/settings.json"];
+  // runs `crasp setup` to generate them locally.
+  const entries = [".crasp/", ".mcp.json", ".claude/settings.json"];
 
   if (!(await exists(gitignorePath))) {
     await writeFile(gitignorePath, entries.map((e) => `${e}\n`).join(""));
@@ -189,11 +189,11 @@ async function ensureGitignoreEntry(root: string): Promise<void> {
   console.log(chalk.dim("Updated .gitignore"));
 }
 
-function resolveAgentFenceBin(): string {
-  // GUI apps on macOS don't inherit ~/.zshrc PATH, so bare "agentfence" may not resolve.
+function resolveCraspBin(): string {
+  // GUI apps on macOS don't inherit ~/.zshrc PATH, so bare "crasp" may not resolve.
   // Use the absolute path when we can find it; fall back to bare name for npm global installs.
   try {
-    const resolved = execFileSync("which", ["agentfence"], {
+    const resolved = execFileSync("which", ["crasp"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
@@ -203,9 +203,9 @@ function resolveAgentFenceBin(): string {
   }
   const pnpmBin = process.env["PNPM_HOME"];
   if (pnpmBin) {
-    return path.join(pnpmBin, "agentfence");
+    return path.join(pnpmBin, "crasp");
   }
-  return "agentfence";
+  return "crasp";
 }
 
 async function setupMcpIntegration(root: string): Promise<void> {
@@ -224,37 +224,37 @@ async function setupMcpIntegration(root: string): Promise<void> {
     }
   }
 
-  if ("agentfence" in mcpConfig.mcpServers) {
+  if ("crasp" in mcpConfig.mcpServers) {
     console.log(
       chalk.yellow("Skipped .mcp.json MCP entry (already exists)")
     );
     return;
   }
 
-  mcpConfig.mcpServers["agentfence"] = {
+  mcpConfig.mcpServers["crasp"] = {
     type: "stdio",
-    command: resolveAgentFenceBin(),
+    command: resolveCraspBin(),
     args: ["mcp"],
   };
 
   await writeFile(mcpJsonPath, `${JSON.stringify(mcpConfig, null, 2)}\n`);
-  console.log(chalk.dim("Wrote .mcp.json with agentfence MCP server"));
+  console.log(chalk.dim("Wrote .mcp.json with crasp MCP server"));
 }
 
 const HOOK_TOOLS = ["Write", "Edit", "Read"] as const;
 type HookToolName = (typeof HOOK_TOOLS)[number];
 
-function isAgentfenceHook(h: unknown, tool: HookToolName): boolean {
+function isCraspHook(h: unknown, tool: HookToolName): boolean {
   return (
     typeof h === "object" &&
     h !== null &&
     (h as Record<string, unknown>).matcher === tool &&
-    JSON.stringify(h).includes("agentfence")
+    JSON.stringify(h).includes("crasp")
   );
 }
 
 function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
-  return isAgentfenceHook(h, tool) && JSON.stringify(h).includes("--hook-input");
+  return isCraspHook(h, tool) && JSON.stringify(h).includes("--hook-input");
 }
 
 async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
@@ -284,12 +284,12 @@ async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
     return;
   }
 
-  // Remove stale agentfence hooks for Write/Edit/Read (old format or partial install)
+  // Remove stale crasp hooks for Write/Edit/Read (old format or partial install)
   const filteredHooks = preToolUse.filter(
-    (h) => !HOOK_TOOLS.some((tool) => isAgentfenceHook(h, tool))
+    (h) => !HOOK_TOOLS.some((tool) => isCraspHook(h, tool))
   );
 
-  const bin = resolveAgentFenceBin();
+  const bin = resolveCraspBin();
 
   for (const tool of HOOK_TOOLS) {
     filteredHooks.push({
@@ -303,21 +303,21 @@ async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
 
   await mkdir(claudeDir, { recursive: true });
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(chalk.dim("Updated .claude/settings.json with AgentFence hooks (Write, Edit, Read)"));
+  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Write, Edit, Read)"));
 }
 
 // ── CLAUDE.md documentation block ────────────────────────────────────────────
 
-const CLAUDE_MD_SENTINEL_START = "<!-- agentfence:start -->";
-const CLAUDE_MD_SENTINEL_END = "<!-- agentfence:end -->";
+const CLAUDE_MD_SENTINEL_START = "<!-- crasp:start -->";
+const CLAUDE_MD_SENTINEL_END = "<!-- crasp:end -->";
 
 const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
-## AgentFence
+## Crasp
 
 Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, and Read.
 Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
 Content written to files is also scanned for leaked secrets and policy violations.
-Policy rules live in \`agentfence.policy.yml\`. Run \`agentfence status\` to verify configuration.
+Policy rules live in \`crasp.policy.yml\`. Run \`crasp status\` to verify configuration.
 ${CLAUDE_MD_SENTINEL_END}`;
 
 export async function ensureClaudeMdSection(
@@ -328,7 +328,7 @@ export async function ensureClaudeMdSection(
 
   if (!(await exists(claudeMdPath))) {
     await writeFile(claudeMdPath, `${CLAUDE_MD_SECTION}\n`);
-    console.log(chalk.dim("Wrote CLAUDE.md with AgentFence section"));
+    console.log(chalk.dim("Wrote CLAUDE.md with Crasp section"));
     return;
   }
 
@@ -336,7 +336,7 @@ export async function ensureClaudeMdSection(
 
   if (raw.includes(CLAUDE_MD_SENTINEL_START)) {
     if (!force) {
-      console.log(chalk.yellow("Skipped CLAUDE.md (AgentFence section already present, use --force to overwrite)"));
+      console.log(chalk.yellow("Skipped CLAUDE.md (Crasp section already present, use --force to overwrite)"));
       return;
     }
     const startIdx = raw.indexOf(CLAUDE_MD_SENTINEL_START);
@@ -349,13 +349,13 @@ export async function ensureClaudeMdSection(
       const after = raw.slice(endIdx + CLAUDE_MD_SENTINEL_END.length).replace(/^\n{3,}/, "\n\n");
       await writeFile(claudeMdPath, `${before}${CLAUDE_MD_SECTION}${after}`);
     }
-    console.log(chalk.dim("Updated AgentFence section in CLAUDE.md"));
+    console.log(chalk.dim("Updated Crasp section in CLAUDE.md"));
     return;
   }
 
   const separator = raw.endsWith("\n\n") ? "" : raw.endsWith("\n") ? "\n" : "\n\n";
   await writeFile(claudeMdPath, `${raw}${separator}${CLAUDE_MD_SECTION}\n`);
-  console.log(chalk.dim("Updated CLAUDE.md with AgentFence section"));
+  console.log(chalk.dim("Updated CLAUDE.md with Crasp section"));
 }
 
 async function exists(filePath: string): Promise<boolean> {

@@ -14,8 +14,8 @@ describe("setupCommand", () => {
     vi.restoreAllMocks();
   });
 
-  it("creates config and ensures .agentfence/ is ignored", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentfence-setup-"));
+  it("creates config and ensures .crasp/ is ignored", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-setup-"));
 
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(tempDir);
@@ -26,14 +26,14 @@ describe("setupCommand", () => {
     const gitignore = await readFile(path.join(tempDir, ".gitignore"), "utf8");
     const hookStatus = await getHookStatus(tempDir);
 
-    expect(config?.builtinPolicies).toContain("agentfence-builtin-security");
+    expect(config?.builtinPolicies).toContain("crasp-builtin-security");
     expect(config?.hooksEnabled).toBe(true);
-    expect(gitignore).toContain(".agentfence/");
+    expect(gitignore).toContain(".crasp/");
     expect(gitignore).toContain(".claude/settings.json");
     expect(hookStatus.healthy).toBe(true);
   });
 
-  it("writes agentfence MCP entry to .mcp.json", async () => {
+  it("writes crasp MCP entry to .mcp.json", async () => {
     const freshRoot = await mkdtemp(
       path.join(os.tmpdir(), "af-setup-mcp-test-")
     );
@@ -47,7 +47,7 @@ describe("setupCommand", () => {
       const mcpConfig = JSON.parse(raw) as {
         mcpServers: Record<string, unknown>;
       };
-      const entry = mcpConfig.mcpServers["agentfence"] as Record<
+      const entry = mcpConfig.mcpServers["crasp"] as Record<
         string,
         unknown
       >;
@@ -83,7 +83,7 @@ describe("setupCommand", () => {
         expect(hook, `${tool} hook should be installed`).toBeDefined();
         const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
         expect(hookDef.type).toBe("command");
-        expect(hookDef.command as string).toContain("agentfence");
+        expect(hookDef.command as string).toContain("crasp");
         expect(hookDef.command as string).toContain("--hook-input");
         expect(hookDef.command as string).toContain(tool);
       }
@@ -99,7 +99,7 @@ describe("setupCommand", () => {
     process.chdir(freshRoot);
     try {
       await setupCommand();
-      const policy = await readFile(path.join(freshRoot, "agentfence.policy.yml"), "utf8");
+      const policy = await readFile(path.join(freshRoot, "crasp.policy.yml"), "utf8");
       expect(policy).toContain("# exceptions:");
       expect(policy).toContain("# Exceptions:");
       expect(policy).toContain("ops: [read]");
@@ -117,9 +117,9 @@ describe("setupCommand", () => {
     try {
       await setupCommand();
       const content = await readFile(path.join(freshRoot, "CLAUDE.md"), "utf8");
-      expect(content).toContain("<!-- agentfence:start -->");
-      expect(content).toContain("<!-- agentfence:end -->");
-      expect(content).toContain("agentfence.policy.yml");
+      expect(content).toContain("<!-- crasp:start -->");
+      expect(content).toContain("<!-- crasp:end -->");
+      expect(content).toContain("crasp.policy.yml");
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
@@ -134,7 +134,7 @@ describe("setupCommand", () => {
       await setupCommand();
       await setupCommand();
       const claudeMd = await readFile(path.join(freshRoot, "CLAUDE.md"), "utf8");
-      const sentinelCount = (claudeMd.match(/<!-- agentfence:start -->/g) ?? []).length;
+      const sentinelCount = (claudeMd.match(/<!-- crasp:start -->/g) ?? []).length;
       expect(sentinelCount).toBe(1);
 
       const raw = await readFile(
@@ -169,9 +169,9 @@ describe("ensureClaudeMdSection", () => {
     try {
       await ensureClaudeMdSection(dir);
       const content = await readFile(path.join(dir, "CLAUDE.md"), "utf8");
-      expect(content).toContain("<!-- agentfence:start -->");
-      expect(content).toContain("<!-- agentfence:end -->");
-      expect(content).toContain("agentfence.policy.yml");
+      expect(content).toContain("<!-- crasp:start -->");
+      expect(content).toContain("<!-- crasp:end -->");
+      expect(content).toContain("crasp.policy.yml");
     } finally {
       process.chdir(originalCwd);
       await rm(dir, { recursive: true, force: true });
@@ -188,7 +188,7 @@ describe("ensureClaudeMdSection", () => {
       const content = await readFile(path.join(dir, "CLAUDE.md"), "utf8");
       expect(content).toContain("# My Project");
       expect(content).toContain("Existing content.");
-      expect(content).toContain("<!-- agentfence:start -->");
+      expect(content).toContain("<!-- crasp:start -->");
     } finally {
       process.chdir(originalCwd);
       await rm(dir, { recursive: true, force: true });
@@ -218,12 +218,12 @@ describe("ensureClaudeMdSection", () => {
     process.chdir(dir);
     try {
       const stale =
-        "# Project\n\n<!-- agentfence:start -->\nOLD CONTENT\n<!-- agentfence:end -->\n\n## More\n";
+        "# Project\n\n<!-- crasp:start -->\nOLD CONTENT\n<!-- crasp:end -->\n\n## More\n";
       await writeFile(path.join(dir, "CLAUDE.md"), stale);
       await ensureClaudeMdSection(dir, true);
       const content = await readFile(path.join(dir, "CLAUDE.md"), "utf8");
       expect(content).not.toContain("OLD CONTENT");
-      expect(content).toContain("agentfence.policy.yml");
+      expect(content).toContain("crasp.policy.yml");
       expect(content).toContain("# Project");
       expect(content).toContain("## More");
     } finally {

@@ -15,11 +15,11 @@ The user types `/audit-safety` optionally followed by options:
    ```sh
    find scenarios -name "*.yml" 2>/dev/null
    ```
-   Report the count to the user before running. If `scenarios/` does not exist, tell the user to run `agentfence setup` to generate starter scenarios.
+   Report the count to the user before running. If `scenarios/` does not exist, tell the user to run `crasp setup` to generate starter scenarios.
 
-2. **Locate the policy** — If `--policy` was given, use it. Otherwise check for `agentfence.policy.yml` in the project root:
+2. **Locate the policy** — If `--policy` was given, use it. Otherwise check for `crasp.policy.yml` in the project root:
    ```sh
-   ls agentfence.policy.yml 2>/dev/null
+   ls crasp.policy.yml 2>/dev/null
    ```
    Note which policy (or no policy) will be used.
 

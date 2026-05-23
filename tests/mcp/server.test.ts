@@ -11,7 +11,7 @@ import { handleScan } from "../../src/mcp/tools/scan.js";
 const POLICY = mergeWithBuiltin();
 
 describe("MCP tools — builtin policy integration", () => {
-  describe("agentfence_check", () => {
+  describe("crasp_check", () => {
     it("blocks a leaked API key", async () => {
       const result = await handleCheck(
         { content: "SECRET_KEY=sk-abcdefghijklmnopqrstuvwxyz123456" },
@@ -81,12 +81,12 @@ describe("MCP tools — builtin policy integration", () => {
     });
   });
 
-  describe("agentfence_scan", () => {
+  describe("crasp_scan", () => {
     let tmpDir: string;
 
     beforeEach(async () => {
       tmpDir = await mkdtemp(
-        path.join(os.tmpdir(), "agentfence-integration-")
+        path.join(os.tmpdir(), "crasp-integration-")
       );
     });
 
@@ -116,7 +116,7 @@ describe("MCP tools — builtin policy integration", () => {
     });
   });
 
-  describe("agentfence_policy", () => {
+  describe("crasp_policy", () => {
     it("returns at least 10 builtin rules", async () => {
       const result = await handlePolicy(POLICY);
       expect(result.totalRules).toBeGreaterThanOrEqual(10);

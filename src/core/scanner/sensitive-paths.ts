@@ -32,9 +32,9 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "advisory",
     ruleId: "sensitive-env-file",
     buildWriteMessage: (basename) =>
-      `⚠️  AgentFence Warning\n\nWriting to ${basename} — this file likely contains API keys and secrets.\nAccidentally modifying it could expose credentials or break your app.\n\nTo pre-approve this, add to agentfence.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [write, edit]`,
+      `⚠️  Crasp Warning\n\nWriting to ${basename} — this file likely contains API keys and secrets.\nAccidentally modifying it could expose credentials or break your app.\n\nTo pre-approve this, add to crasp.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [write, edit]`,
     buildReadMessage: (basename) =>
-      `AgentFence: You are reading ${basename}, which likely contains secrets (API keys, passwords, tokens). Please tell the user: "AgentFence flagged this file as sensitive — I'll make sure not to include any secret values in my response."`,
+      `Crasp: You are reading ${basename}, which likely contains secrets (API keys, passwords, tokens). Please tell the user: "Crasp flagged this file as sensitive — I'll make sure not to include any secret values in my response."`,
   },
   {
     // Private keys and certificates
@@ -45,9 +45,9 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "critical",
     ruleId: "sensitive-key-file",
     buildWriteMessage: (basename) =>
-      `🚨  AgentFence — Critical Security Risk\n\nAccessing ${basename} — this is a cryptographic private key or certificate.\nThis file could compromise your server's identity and all SSL connections.\n\nThis is a HIGH RISK action. Only proceed if you are certain.\n\nTo pre-approve this, add to agentfence.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [any]`,
+      `🚨  Crasp — Critical Security Risk\n\nAccessing ${basename} — this is a cryptographic private key or certificate.\nThis file could compromise your server's identity and all SSL connections.\n\nThis is a HIGH RISK action. Only proceed if you are certain.\n\nTo pre-approve this, add to crasp.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [any]`,
     buildReadMessage: (basename) =>
-      `🚨  AgentFence — Critical Security Risk\n\nAccessing ${basename} — this is a cryptographic private key or certificate.\nThis file could compromise your server's identity and all SSL connections.\n\nThis is a HIGH RISK action. Only proceed if you are certain.\n\nTo pre-approve this, add to agentfence.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [any]`,
+      `🚨  Crasp — Critical Security Risk\n\nAccessing ${basename} — this is a cryptographic private key or certificate.\nThis file could compromise your server's identity and all SSL connections.\n\nThis is a HIGH RISK action. Only proceed if you are certain.\n\nTo pre-approve this, add to crasp.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [any]`,
   },
   {
     // AWS/cloud credentials files
@@ -58,9 +58,9 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "advisory",
     ruleId: "sensitive-cloud-credentials",
     buildWriteMessage: (basename) =>
-      `⚠️  AgentFence Warning\n\nWriting to ${basename} — this file likely contains API keys and secrets.\nAccidentally modifying it could expose credentials or break your app.\n\nTo pre-approve this, add to agentfence.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [write, edit]`,
+      `⚠️  Crasp Warning\n\nWriting to ${basename} — this file likely contains API keys and secrets.\nAccidentally modifying it could expose credentials or break your app.\n\nTo pre-approve this, add to crasp.policy.yml:\n  exceptions:\n    - path: "${basename}"\n      ops: [write, edit]`,
     buildReadMessage: (basename) =>
-      `AgentFence: You are reading ${basename}, which likely contains secrets (API keys, passwords, tokens). Please tell the user: "AgentFence flagged this file as sensitive — I'll make sure not to include any secret values in my response."`,
+      `Crasp: You are reading ${basename}, which likely contains secrets (API keys, passwords, tokens). Please tell the user: "Crasp flagged this file as sensitive — I'll make sure not to include any secret values in my response."`,
   },
 ];
 

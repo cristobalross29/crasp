@@ -5,9 +5,9 @@ describe("smoke", () => {
   it("program can be imported without errors", () => {
     const program = new Command();
 
-    program.name("agentfence");
+    program.name("crasp");
 
-    expect(program.name()).toBe("agentfence");
+    expect(program.name()).toBe("crasp");
   });
 
   it("commander registers subcommands correctly", () => {

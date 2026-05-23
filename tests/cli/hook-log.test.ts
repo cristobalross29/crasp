@@ -17,7 +17,7 @@ function makeEntry(overrides: Record<string, unknown> = {}): string {
 }
 
 async function makeLogDir(tmpDir: string, lines: string[]): Promise<void> {
-  const logDir = path.join(tmpDir, ".agentfence");
+  const logDir = path.join(tmpDir, ".crasp");
   await mkdir(logDir, { recursive: true });
   await writeFile(path.join(logDir, "events.ndjson"), lines.join("\n") + "\n");
 }

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace AgentFence's binary block/warn hook behavior with a three-tier graduated system (advisory / high / critical) and add policy exceptions that bypass all checks silently.
+**Goal:** Replace Crasp's binary block/warn hook behavior with a three-tier graduated system (advisory / high / critical) and add policy exceptions that bypass all checks silently.
 
 **Architecture:** Each sensitive path rule now carries a `tier` (`advisory | high | critical`) per operation. In `runHookInputCheck`, the policy is loaded first so exceptions can be checked before path rules fire. The tier drives which Claude Code hook output format is used. A new `exceptions.ts` module owns all exception-matching logic using `micromatch`.
 
@@ -498,16 +498,16 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "advisory",
     ruleId: "sensitive-env-file",
     buildWriteMessage: (name) =>
-      `⚠️  AgentFence Warning\n\n` +
+      `⚠️  Crasp Warning\n\n` +
       `Writing to ${name} — this file likely contains API keys and secrets.\n` +
       `Accidentally modifying it could expose credentials or break your app.\n\n` +
-      `To pre-approve this, add to agentfence.policy.yml:\n` +
+      `To pre-approve this, add to crasp.policy.yml:\n` +
       `  exceptions:\n` +
       `    - path: "${name}"\n` +
       `      ops: [write, edit]`,
     buildReadMessage: (name) =>
-      `AgentFence: You are reading ${name}, which may contain secrets (API keys, ` +
-      `passwords, tokens). Please tell the user: "AgentFence noticed I'm reading a ` +
+      `Crasp: You are reading ${name}, which may contain secrets (API keys, ` +
+      `passwords, tokens). Please tell the user: "Crasp noticed I'm reading a ` +
       `sensitive file — I'll make sure not to include any secret values in my response."`,
   },
   {
@@ -518,19 +518,19 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "critical",
     ruleId: "sensitive-key-file",
     buildWriteMessage: (name) =>
-      `🚨  AgentFence — Critical Security Risk\n\n` +
+      `🚨  Crasp — Critical Security Risk\n\n` +
       `Writing to ${name} — this is a cryptographic private key or certificate.\n` +
       `Modifying this file could compromise your server's identity and all SSL connections.\n\n` +
       `This is a HIGH RISK action. Only proceed if you are certain.\n\n` +
-      `To pre-approve this, add to agentfence.policy.yml:\n` +
+      `To pre-approve this, add to crasp.policy.yml:\n` +
       `  exceptions:\n` +
       `    - path: "${name}"\n` +
       `      ops: [write, edit]`,
     buildReadMessage: (name) =>
-      `🚨  AgentFence — Critical Security Risk\n\n` +
+      `🚨  Crasp — Critical Security Risk\n\n` +
       `Reading ${name} — this is a cryptographic private key or certificate.\n` +
       `Exposing the contents of this file could compromise your server.\n\n` +
-      `To pre-approve this, add to agentfence.policy.yml:\n` +
+      `To pre-approve this, add to crasp.policy.yml:\n` +
       `  exceptions:\n` +
       `    - path: "${name}"\n` +
       `      ops: [read]`,
@@ -543,16 +543,16 @@ const SENSITIVE_PATH_RULES: SensitivePathRule[] = [
     readTier: "advisory",
     ruleId: "sensitive-cloud-credentials",
     buildWriteMessage: (name) =>
-      `⚠️  AgentFence Warning\n\n` +
+      `⚠️  Crasp Warning\n\n` +
       `Writing to ${name} — this file contains cloud provider credentials.\n` +
       `Modifying it could lock you out of your cloud account or expose access keys.\n\n` +
-      `To pre-approve this, add to agentfence.policy.yml:\n` +
+      `To pre-approve this, add to crasp.policy.yml:\n` +
       `  exceptions:\n` +
       `    - path: "${name}"\n` +
       `      ops: [write, edit]`,
     buildReadMessage: (name) =>
-      `AgentFence: You are reading ${name}, which contains cloud provider credentials. ` +
-      `Please tell the user: "AgentFence noticed I'm reading a cloud credentials file — ` +
+      `Crasp: You are reading ${name}, which contains cloud provider credentials. ` +
+      `Please tell the user: "Crasp noticed I'm reading a cloud credentials file — ` +
       `I'll make sure not to include any credential values in my response."`,
   },
 ];
@@ -675,7 +675,7 @@ describe("check --hook-input Write — env files (high tier → ask)", () => {
     const out = parseOutput(result.stdout).hookSpecificOutput!;
     expect(out.permissionDecisionReason).toContain("⚠️");
     expect(out.permissionDecisionReason).toContain(".env.local");
-    expect(out.permissionDecisionReason).toContain("agentfence.policy.yml");
+    expect(out.permissionDecisionReason).toContain("crasp.policy.yml");
   });
 
   it("outputs ask for writing to .env", () => {
@@ -722,7 +722,7 @@ describe("check --hook-input Read — env files (advisory tier)", () => {
     expect(isAdvisory(result.stdout)).toBe(true);
     const ctx = parseOutput(result.stdout).hookSpecificOutput!.additionalContext!;
     expect(ctx).toContain(".env.local");
-    expect(ctx).toContain("AgentFence");
+    expect(ctx).toContain("Crasp");
     // Advisory must NOT be a deny or ask — tool should proceed
     expect(isDeny(result.stdout)).toBe(false);
     expect(isAsk(result.stdout)).toBe(false);
@@ -817,7 +817,7 @@ describe("check --hook-input — policy exceptions bypass", () => {
 
   async function setup(policyYml: string): Promise<string> {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "af-exc-"));
-    await writeFile(path.join(tempDir, "agentfence.policy.yml"), policyYml);
+    await writeFile(path.join(tempDir, "crasp.policy.yml"), policyYml);
     return tempDir;
   }
 
@@ -987,7 +987,7 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason: `[agentfence] content policy violation — ${reasons}`,
+            permissionDecisionReason: `[crasp] content policy violation — ${reasons}`,
           },
         })
       );
@@ -1062,7 +1062,7 @@ it("starter policy includes a commented exceptions example block", async () => {
   process.chdir(freshRoot);
   try {
     await setupCommand();
-    const policy = await readFile(path.join(freshRoot, "agentfence.policy.yml"), "utf8");
+    const policy = await readFile(path.join(freshRoot, "crasp.policy.yml"), "utf8");
     expect(policy).toContain("exceptions:");
     expect(policy).toContain("ops:");
   } finally {
@@ -1097,7 +1097,7 @@ rules:
     message: "Credential theft guidance detected."
 
 # Exceptions: pre-approve specific file access to bypass the ask dialog.
-# AgentFence will prompt you before Claude touches sensitive files by default.
+# Crasp will prompt you before Claude touches sensitive files by default.
 # Uncomment and edit entries below to allow access without a prompt.
 #
 # exceptions:
@@ -1140,7 +1140,7 @@ git commit -m "feat(setup): add commented exceptions block to starter policy"
 
 ## Task 6: Re-run setup in pagina_personal to activate new hooks
 
-The binary in `pagina_personal` still has the old behavior. Running `agentfence setup --force` there updates the `.claude/settings.json` hooks AND rewrites `agentfence.policy.yml` with the new exceptions template.
+The binary in `pagina_personal` still has the old behavior. Running `crasp setup --force` there updates the `.claude/settings.json` hooks AND rewrites `crasp.policy.yml` with the new exceptions template.
 
 - [ ] **Step 6.1: Final build + full test run**
 
@@ -1160,15 +1160,15 @@ If anything is uncommitted, add and commit it.
 
 - [ ] **Step 6.3: Remind user to re-run setup in pagina_personal**
 
-The user needs to run this in their terminal (cannot be done by AgentFence due to self-modification guard):
+The user needs to run this in their terminal (cannot be done by Crasp due to self-modification guard):
 
 ```bash
 cd ~/Desktop/Projects/pagina_personal
-agentfence setup --force
+crasp setup --force
 ```
 
 This will:
-- Overwrite `agentfence.policy.yml` with the new commented exceptions template
+- Overwrite `crasp.policy.yml` with the new commented exceptions template
 - The `.claude/settings.json` hooks are already correct from the previous setup run
 
 After that, reading `.env.local` will show an advisory (Claude relays it), writing `.env.local` will show a ⚠️ ask dialog, and writing `id_rsa` will show a 🚨 critical ask dialog.

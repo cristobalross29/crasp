@@ -13,7 +13,7 @@ export function renderHtmlReport(report: RunReport): string {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>AgentFence Report ${escapeHtml(report.runId)}</title>
+  <title>Crasp Report ${escapeHtml(report.runId)}</title>
   <style>
     body { color: #17202a; font-family: Arial, sans-serif; margin: 2rem; }
     table { border-collapse: collapse; width: 100%; }
@@ -23,7 +23,7 @@ export function renderHtmlReport(report: RunReport): string {
   </style>
 </head>
 <body>
-  <h1>AgentFence Report</h1>
+  <h1>Crasp Report</h1>
   <p><strong>Run:</strong> ${escapeHtml(report.runId)}</p>
   <p><strong>Scenario:</strong> ${escapeHtml(report.scenarioName)}</p>
   <p><strong>Status:</strong> <span class="${report.status}">${report.status}</span></p>

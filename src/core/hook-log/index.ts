@@ -5,14 +5,14 @@ import type { HookTool } from "../scanner/sensitive-paths.js";
 
 export { HookLogEntry };
 
-const AGENTFENCE_DIR = ".agentfence";
+const CRASP_DIR = ".crasp";
 const LOG_FILE = "events.ndjson";
 const MAX_AGE_DAYS = 90;
 const PRUNE_THRESHOLD = 0.1;
 
 export function hookLogPath(root?: string): string {
   const base = root ?? process.cwd();
-  return path.join(base, AGENTFENCE_DIR, LOG_FILE);
+  return path.join(base, CRASP_DIR, LOG_FILE);
 }
 
 export async function appendHookLogEntry(
