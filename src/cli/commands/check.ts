@@ -9,6 +9,7 @@ import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.js";
 import { checkSensitivePath } from "../../core/scanner/sensitive-paths.js";
 import { matchesException } from "../../core/policy/exceptions.js";
+import { appendHookLogEntry } from "../../core/hook-log/index.js";
 import type { FileScanResult, Policy, Severity } from "../../types/index.js";
 import type { HookTool } from "../../core/scanner/sensitive-paths.js";
 
@@ -168,6 +169,7 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
 
   // Step 3: Check exceptions — if the file+op is explicitly allowed, exit silently
   if (filePath && matchesException(filePath, toolName, policy.exceptions ?? [])) {
+    await appendHookLogEntry(filePath, toolName, "exception");
     process.exit(0);
   }
 
@@ -195,6 +197,7 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
           },
         })
       );
+      await appendHookLogEntry(filePath, toolName, "ask", pathResult.tier, pathResult.ruleId);
       process.exit(0);
     }
   }
@@ -222,10 +225,16 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
           },
         })
       );
+      await appendHookLogEntry(filePath, toolName, "denied", undefined, blocking[0].ruleId);
       process.exit(0);
     }
   }
 
   // Step 6: All checks passed
+  if (pathResult?.tier === "advisory") {
+    await appendHookLogEntry(filePath, toolName, "advisory", "advisory", pathResult.ruleId);
+  } else {
+    await appendHookLogEntry(filePath, toolName, "clean");
+  }
   process.exit(0);
 }
