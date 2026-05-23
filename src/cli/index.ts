@@ -13,6 +13,7 @@ import { setupCommand } from "./commands/setup.js";
 import { statusCommand } from "./commands/status.js";
 import { validateCommand } from "./commands/validate.js";
 import { mcpCommand } from "./commands/mcp.js";
+import { hookLogCommand } from "./commands/hook-log.js";
 
 const program = new Command();
 
@@ -90,5 +91,14 @@ program
   .command("mcp")
   .description("start the AgentFence MCP server (stdio transport)")
   .action(mcpCommand);
+
+program
+  .command("hook-log")
+  .description("show AgentFence hook activity log")
+  .option("--days <n>", "number of days to show (default: 2)", "2")
+  .option("--summary", "print only the 30-day summary stats")
+  .option("--json", "emit raw NDJSON lines to stdout")
+  .option("--prune", "remove entries older than 90 days and exit")
+  .action(hookLogCommand);
 
 program.parse();
