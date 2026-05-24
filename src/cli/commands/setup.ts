@@ -137,14 +137,18 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   // CLAUDE.md documentation block
   await ensureClaudeMdSection(root, options.force);
 
-  console.log(chalk.green("\nCrasp setup complete."));
+  console.log(chalk.green("\nCrasp setup complete. Open Claude Code — protection is already active."));
   console.log(
     chalk.dim(
-      "\nNext steps:\n" +
-        "  crasp status          — verify everything is wired up\n" +
+      "\nWhat's now running (automatically, no extra commands needed):\n" +
+        "  Hook guard  — every Write, Edit, and Read Claude Code makes is intercepted\n" +
+        "  MCP server  — Claude Code will start it on its own via .mcp.json\n" +
+        "  Git hook    — staged files are scanned before every commit\n" +
+        "\nOptional next steps:\n" +
+        "  crasp status                              — verify everything is wired up\n" +
+        "  crasp hook-log                            — see what the hook has intercepted\n" +
         "  crasp run scenarios/safe-refusal-demo.yml — run your first scenario\n" +
-        "  crasp scan .          — scan this project for security patterns\n" +
-        "  crasp mcp             — start the MCP server for Claude Code"
+        "  crasp scan .                              — scan this project right now"
     )
   );
 }
