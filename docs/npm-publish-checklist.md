@@ -1,14 +1,14 @@
 # npm Publish Checklist
 
-Use this checklist before publishing `crasp` to npm.
+Use this checklist before publishing `@cristobalross29/crasp` to npm.
 
 ## Registry And Naming
 
-- `npm view crasp name version description --json` returned `E404` on
-  2026-05-23, so the exact npm package name appeared available at that time.
-- Public web search found older acronym/scientific uses of CRASP, but did not
-  surface an active AI-security product using `crasp`. This is not legal advice;
-  confirm trademark comfort before publishing.
+- Package is scoped as `@cristobalross29/crasp` following npm's recommendation
+  after the unscoped name `crasp` was rejected for similarity to the existing
+  `case` package (403 returned on 2026-05-23).
+- All public references (README, docs) use the scoped name.
+- Scoped packages require `npm publish --access=public` for public visibility.
 
 ## Preflight
 
@@ -25,7 +25,7 @@ Run:
 
 ```sh
 pnpm release:check
-npm publish --dry-run
+npm publish --dry-run --access=public
 ```
 
 This runs:
@@ -37,7 +37,7 @@ pnpm typecheck
 npm pack --dry-run
 ```
 
-Expected tarball contents for `crasp@0.1.0`:
+Expected tarball contents for `@cristobalross29/crasp@0.1.0`:
 
 - `LICENSE`
 - `README.md`
@@ -45,9 +45,10 @@ Expected tarball contents for `crasp@0.1.0`:
 - `dist/index.d.ts`
 - `package.json`
 
-`npm publish --dry-run` should complete without npm auto-correcting package
-metadata. If npm reports cache permission errors, fix the local npm cache or run
-the release from a clean environment before publishing.
+`npm publish --dry-run --access=public` should complete without npm
+auto-correcting package metadata. If npm reports cache permission errors,
+fix the local npm cache or run the release from a clean environment before
+publishing.
 
 ## Publish
 
@@ -56,14 +57,14 @@ the release from a clean environment before publishing.
 3. Publish:
 
    ```sh
-   npm publish
+   npm publish --access=public
    ```
 
 4. Verify the release:
 
    ```sh
-   npm view crasp version
-   npm exec crasp -- --help
+   npm view @cristobalross29/crasp version
+   npx @cristobalross29/crasp --help
    ```
 
 Prefer publishing from CI with npm provenance once the repository has a release
