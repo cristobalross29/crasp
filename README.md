@@ -60,6 +60,7 @@ node dist/index.js --help
 
 ```sh
 crasp setup                                     # wire hooks, MCP, and CLAUDE.md into your project
+crasp init                                      # scaffold a starter scenario YAML
 crasp run scenarios/safe-refusal-demo.yml       # run a scenario transcript
 crasp scan . --severity high                    # scan files against the built-in policy
 crasp check --staged                            # check staged files before committing
@@ -89,7 +90,7 @@ expectations:
 Run it:
 
 ```sh
-crasp run examples/scenarios/safe-refusal-demo.yml --policy examples/policies/default-safety.yml
+crasp run scenarios/safe-refusal-demo.yml --policy examples/policies/default-safety.yml
 ```
 
 | Expectation Type | Passes When |
@@ -138,13 +139,15 @@ without weakening the baseline.
 
 ## CLI Reference
 
-```
+```txt
 crasp setup                      initialize Crasp project configuration
+crasp init                       scaffold a starter scenario YAML
 crasp run <scenario>             run a scenario transcript
 crasp scan [path]                scan a file or directory
 crasp check [paths...]           check files for policy matches
 crasp check --staged             check staged git files
 crasp check --hook-input <tool>  evaluate a PreToolUse payload from stdin
+crasp validate <kind> <file>     validate a scenario or policy YAML file
 crasp policy list                show active policy rules
 crasp policy check               check freeform text against policy
 crasp status                     show project health
