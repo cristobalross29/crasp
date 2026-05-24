@@ -7,3 +7,4 @@ dist/
 *.map
 *.tsbuildinfo
 graphify-out/
+.gstack/
