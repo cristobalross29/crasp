@@ -1,36 +1,50 @@
 # Crasp
 
-Crasp is a local-first CLI for testing recorded AI agent transcripts against
-scenario expectations and safety policies.
+> Local-first security layer for AI agent transcripts.
 
-Use it to keep agent transcripts, tool calls, generated files, and safety
-refusals testable in the same way you keep ordinary code testable: with
-versioned fixtures, repeatable checks, and reports that stay on your machine.
+[![npm](https://img.shields.io/npm/v/@cristobalross29/crasp)](https://www.npmjs.com/package/@cristobalross29/crasp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![node >=18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
 
-No hosted service, database, or cloud account is required.
+Crasp is a local-first CLI for testing recorded AI agent transcripts against scenario expectations
+and safety policies. It intercepts Claude Code `Write`, `Edit`, and `Read` operations via
+`PreToolUse` hooks, scans content for leaked secrets and policy violations, and keeps every check
+repeatable and entirely on your machine.
+
+No hosted service, database, or cloud account required.
 
 ## What It Does
 
-- Runs YAML scenarios that describe user, assistant, system, and tool messages.
-- Evaluates expectations such as `contains`, `not_contains`, and `regex`.
-- Applies policy rules to transcripts, stdin, files, directories, and hook
-  payloads.
-- Ships built-in rules for common AI-agent security risks.
-- Writes local run reports to `.crasp/runs/`.
-- Supports terminal, JSON, and HTML report output.
-- Provides pre-commit and Claude Code hook workflows.
-- Exposes an MCP server for tool-driven integrations.
-
-Crasp is deterministic by design. It uses explicit scenarios and regular
-expression policies so teams can review, version, and repeat every check.
+- **Scenario testing** — Run YAML transcripts with `contains`, `not_contains`, and `regex`
+  expectations against recorded agent conversations.
+- **Policy scanning** — Apply regex-based rules to files, directories, stdin, and Claude Code
+  hook payloads.
+- **Built-in safety rules** — 10 always-on rules covering credential theft, prompt injection,
+  SSRF, path traversal, unsafe code execution, PII, and more.
+- **Claude Code hooks** — Intercepts `PreToolUse` events and blocks, warns, or logs based on
+  your policy.
+- **Sensitive path detection** — Tiered protection for `.env` files, credentials, private keys,
+  and certificates.
+- **Local run reports** — Every scenario run stored under `.crasp/runs/` as terminal, JSON,
+  or HTML.
+- **MCP server** — Exposes `crasp_check`, `crasp_scan`, and `crasp_policy` tools for Claude
+  integrations.
+- **Deterministic by design** — Explicit scenarios and regular-expression policies that teams
+  can review, version, and repeat.
 
 ## Install
 
-Crasp requires Node.js 18 or newer.
+Requires Node.js 18 or newer.
 
 ```sh
-npm install --save-dev crasp
-npx crasp --help
+# Try it without installing
+npx @cristobalross29/crasp --help
+
+# Project install — pins version for CI and team reproducibility (recommended)
+npm install --save-dev @cristobalross29/crasp
+
+# Global — install once, use in any project
+npm install -g @cristobalross29/crasp
 ```
 
 From source:
@@ -38,50 +52,23 @@ From source:
 ```sh
 git clone git@github.com:cristobalross29/crasp.git
 cd crasp
-pnpm install
-pnpm build
+pnpm install && pnpm build
 node dist/index.js --help
-```
-
-For local CLI development:
-
-```sh
-pnpm link --global
-crasp --help
 ```
 
 ## Quick Start
 
-Initialize a project:
-
 ```sh
-crasp setup
-crasp init
-```
-
-Run a scenario:
-
-```sh
-crasp run scenarios/safe-refusal-demo.yml
-```
-
-Check source files against the merged built-in and project policy:
-
-```sh
-crasp check src
-crasp scan . --severity high
-```
-
-List available policy rules:
-
-```sh
-crasp policy list
+crasp setup                                     # wire hooks, MCP, and CLAUDE.md into your project
+crasp run scenarios/safe-refusal-demo.yml       # run a scenario transcript
+crasp scan . --severity high                    # scan files against the built-in policy
+crasp check --staged                            # check staged files before committing
+crasp policy list                               # show active policy rules
 ```
 
 ## Scenarios
 
-A scenario is a recorded transcript plus expectations about the expected agent
-behavior.
+A scenario is a recorded transcript paired with expectations about expected agent behavior.
 
 ```yaml
 name: safe-refusal-demo
@@ -105,20 +92,17 @@ Run it:
 crasp run examples/scenarios/safe-refusal-demo.yml --policy examples/policies/default-safety.yml
 ```
 
-Supported expectation types:
-
-| Type | Passes When |
+| Expectation Type | Passes When |
 | --- | --- |
-| `contains` | Target transcript text includes `value` |
-| `not_contains` | Target transcript text does not include `value` |
-| `regex` | Target transcript text matches the JavaScript regular expression in `value` |
+| `contains` | Target text includes `value` |
+| `not_contains` | Target text does not include `value` |
+| `regex` | Target text matches the JavaScript regular expression in `value` |
 
-Supported targets are `system`, `user`, `assistant`, `tool`, and `any`.
+Supported targets: `system`, `user`, `assistant`, `tool`, `any`.
 
 ## Policies
 
-A policy is a set of regular-expression rules. Rules can target one transcript
-role or `any`.
+A policy is a set of regular-expression rules. Rules can target one transcript role or `any`.
 
 ```yaml
 id: default-safety
@@ -133,78 +117,65 @@ rules:
     message: "Credential theft guidance detected."
 ```
 
-For `check`, `scan`, and `policy` commands, Crasp merges
-`crasp.policy.yml` with the built-in security policy. Built-in rules win
-on duplicate rule IDs so local policy files can add coverage without weakening
-the baseline.
+Crasp merges `crasp.policy.yml` with the built-in security policy on every `check`, `scan`,
+and `policy` command. Built-in rule IDs win on conflict so local policy files add coverage
+without weakening the baseline.
 
-## Built-In Rule Categories
+## Built-In Rules
 
-Crasp currently ships built-in rules for:
-
-- Credential exfiltration
-- Prompt injection
-- SSRF targets
-- Path traversal
-- Unsafe code execution
-- Data exfiltration
-- PII exposure
-- Token leakage
-- System prompt extraction
-- Jailbreak attempts
-
-These rules are intentionally conservative regex checks. They are useful for
-repeatable guardrails and regression tests, but they are not a replacement for
-human security review or a dedicated secret-scanning engine.
+| Rule | Severity | What It Catches |
+| --- | --- | --- |
+| `token-leakage` | critical | Leaked API keys, `sk-*`, `github_pat_*`, bearer tokens |
+| `credential-exfiltration` | critical | Instructions to steal or dump credentials |
+| `prompt-injection` | high | "Ignore previous instructions" patterns |
+| `ssrf` | high | Cloud metadata endpoints (169.254.169.254, etc.) |
+| `path-traversal` | high | `../..`, `/etc/passwd` |
+| `code-execution` | high | `eval()`, `child_process`, `os.system()` |
+| `data-exfiltration` | high | Instructions to exfiltrate databases or secrets |
+| `pii-exposure` | high | SSN, credit card, passport number patterns |
+| `jailbreak-attempt` | medium | DAN mode, bypass safety controls |
+| `system-prompt-extraction` | medium | Instructions to reveal the system prompt |
 
 ## CLI Reference
 
-```txt
-crasp init                     scaffold scenario
-crasp setup                    initialize Crasp project configuration
-crasp run <scenario>           run a scenario
-crasp list                     list past runs
-crasp check [paths...]         check files for policy matches
-crasp scan [path]              scan a file or directory
-crasp validate <kind> <file>   validate a scenario or policy YAML file
-crasp status                   show project status
-crasp hook <command>           manage the pre-commit hook
-crasp policy <command>         list rules or check freeform text
-crasp report <run-id>          reprint a run report
-crasp mcp                      start the MCP server on stdio
-crasp hook-log                 show hook activity
 ```
-
-Useful examples:
-
-```sh
-crasp check --staged
-crasp check --stdin
-crasp scan . --format json --severity high
-crasp validate scenario scenarios/safe-assistant.yml
+crasp setup                      initialize Crasp project configuration
+crasp run <scenario>             run a scenario transcript
+crasp scan [path]                scan a file or directory
+crasp check [paths...]           check files for policy matches
+crasp check --staged             check staged git files
+crasp check --hook-input <tool>  evaluate a PreToolUse payload from stdin
+crasp policy list                show active policy rules
+crasp policy check               check freeform text against policy
+crasp status                     show project health
+crasp hook-log                   show hook activity
+crasp hook-log --summary         show 30-day stats
+crasp list                       list past scenario runs
+crasp report <run-id>            reprint a run report
 crasp report <run-id> --format html --out report.html
-crasp hook install
-crasp hook-log --summary
+crasp mcp                        start the MCP server on stdio
 ```
 
 ## Hooks
 
-Crasp can run as a Git pre-commit check:
+Crasp runs as a Claude Code `PreToolUse` hook and as a Git pre-commit check.
+
+**Claude Code hooks** — added automatically by `crasp setup`:
+
+```sh
+crasp check --hook-input Write    # evaluate a Write payload from stdin
+crasp check --hook-input Edit     # evaluate an Edit payload from stdin
+crasp check --hook-input Read     # evaluate a Read payload from stdin
+```
+
+**Git pre-commit:**
 
 ```sh
 crasp hook install
 crasp check --staged
 ```
 
-It also supports Claude Code `PreToolUse` payload checks:
-
-```sh
-crasp check --hook-input Write
-crasp check --hook-input Edit
-crasp check --hook-input Read
-```
-
-Hook decisions are logged locally and can be inspected with:
+Inspect hook decisions:
 
 ```sh
 crasp hook-log
@@ -214,63 +185,46 @@ crasp hook-log --summary
 ## Reports
 
 Every scenario run is stored under `.crasp/runs/<run-id>/report.json`.
-Reports can be reprinted later:
 
 ```sh
-crasp list
-crasp report <run-id>
-crasp report <run-id> --format json
-crasp report <run-id> --format html --out report.html
+crasp list                                          # list all runs
+crasp report <run-id>                               # terminal output
+crasp report <run-id> --format json                 # JSON
+crasp report <run-id> --format html --out out.html  # HTML
 ```
 
 ## MCP
 
-Start the Crasp MCP server with stdio transport:
+Start the Crasp MCP server on stdio transport:
 
 ```sh
 crasp mcp
 ```
 
-The MCP tools expose policy, scan, check, and action-oriented workflows for
-agent integrations.
-
-## Project Map
-
-This repository can be explored with Graphify. When `graphify-out/` exists,
-use:
-
-```sh
-graphify query "Crasp CLI policy scanner architecture"
-graphify path "runScenario()" "Policy"
-graphify explain "Built-in Policy Merge Flow"
-```
-
-The interactive graph is generated at `graphify-out/graph.html`. The broad
-architecture report is `graphify-out/GRAPH_REPORT.md`.
+Available tools: `crasp_check`, `crasp_scan`, `crasp_policy`. Added to `.mcp.json` automatically by `crasp setup`.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm build
-pnpm typecheck
-pnpm test
+pnpm build       # compile src/ → dist/
+pnpm test        # run Vitest suite
+pnpm typecheck   # tsc --noEmit
+```
+
+Link the CLI locally for development:
+
+```sh
+pnpm link --global
+crasp --help
 ```
 
 Before publishing:
 
 ```sh
 pnpm release:check
+npm publish --access=public
 ```
-
-## Operational Notes
-
-- The scanner is regex-based and may report matches inside policy definitions,
-  documentation, or test fixtures that intentionally contain unsafe strings.
-- `.crasp/`, `dist/`, `node_modules/`, and `graphify-out/` are ignored by
-  default.
-- Policy patterns are JavaScript regular expressions and are evaluated
-  case-insensitively.
 
 ## License
 
