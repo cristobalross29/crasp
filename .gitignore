@@ -8,3 +8,6 @@ dist/
 *.tsbuildinfo
 graphify-out/
 .gstack/
+.pnpm-store/
+docs/superpowers/
+docs/npm-publish-checklist.md
