@@ -3,6 +3,13 @@
 This document defines how Claude Code and Codex are used in this project, their
 division of responsibility, and the workflows they follow.
 
+## Project Navigation
+
+Start with `CLAUDE.md` for a project overview and key commands. For the full module map,
+data flows, and extension guides, read `.claude/CLAUDE.md`. When exploring unfamiliar
+parts of the codebase, read the relevant `src/` files directly — the architecture section
+in `.claude/CLAUDE.md` maps every module to its responsibility.
+
 ## Agents
 
 ### Claude Code
