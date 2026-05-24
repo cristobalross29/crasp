@@ -22,7 +22,6 @@ const defaultExcludedDirs = new Set([
   ".codex",
   ".cursor",
   ".git",
-  ".gstack",
   ".next",
   ".pytest_cache",
   ".ruff_cache",
@@ -32,7 +31,6 @@ const defaultExcludedDirs = new Set([
   "build",
   "coverage",
   "dist",
-  "graphify-out",
   "node_modules",
   "scenarios"
 ]);

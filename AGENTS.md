@@ -3,18 +3,6 @@
 This document defines how Claude Code and Codex are used in this project, their
 division of responsibility, and the workflows they follow.
 
-## Project Navigation
-
-This project has a local knowledge graph in `graphify-out/` when generated.
-Use it before broad source browsing when it is available:
-
-- Run `graphify query "<question>"` for codebase questions.
-- Run `graphify path "<A>" "<B>"` to inspect relationships between concepts.
-- Run `graphify explain "<concept>"` for focused explanations.
-- Read `graphify-out/GRAPH_REPORT.md` for broad architecture review only when
-  query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to refresh the local graph.
-
 ## Agents
 
 ### Claude Code
