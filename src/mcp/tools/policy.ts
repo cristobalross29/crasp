@@ -4,7 +4,7 @@ interface PolicyResult {
   policyId: string;
   policyName: string;
   totalRules: number;
-  rules: PolicyRule[];
+  rules: Omit<PolicyRule, "pattern">[];
 }
 
 export async function handlePolicy(policy: Policy): Promise<PolicyResult> {
@@ -12,6 +12,6 @@ export async function handlePolicy(policy: Policy): Promise<PolicyResult> {
     policyId: policy.id,
     policyName: policy.name,
     totalRules: policy.rules.length,
-    rules: policy.rules,
+    rules: policy.rules.map(({ pattern: _p, ...rest }) => rest),
   };
 }

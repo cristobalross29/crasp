@@ -1,6 +1,6 @@
 {
   "name": "@cristobalross29/crasp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first CLI for testing AI agent transcripts against scenario expectations and safety policies",
   "type": "module",
   "bin": {

@@ -10,6 +10,7 @@ import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.
 import { checkSensitivePath } from "../../core/scanner/sensitive-paths.js";
 import { matchesException } from "../../core/policy/exceptions.js";
 import { appendHookLogEntry } from "../../core/hook-log/index.js";
+import { redactSensitiveScanResults } from "../../core/scanner/redact.js";
 import type { FileScanResult, Policy, Severity } from "../../types/index.js";
 import type { HookTool } from "../../core/scanner/sensitive-paths.js";
 
@@ -42,7 +43,10 @@ export async function checkCommand(
     );
 
     if (blocking.length > 0) {
-      for (const m of blocking) {
+      const [redacted] = redactSensitiveScanResults([
+        { filePath: "(stdin)", matches: blocking, scanned: true },
+      ]);
+      for (const m of redacted.matches) {
         process.stderr.write(
           `[crasp] BLOCKED — ${m.ruleId} (${m.severity}): ${m.match}\n`
         );
@@ -167,38 +171,35 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
   // Step 2: Load policy
   const policy = await loadMergedPolicy();
 
-  // Step 3: Check exceptions — if the file+op is explicitly allowed, exit silently
-  if (filePath && matchesException(filePath, toolName, policy.exceptions ?? [])) {
-    await appendHookLogEntry(filePath, toolName, "exception");
-    process.exit(0);
-  }
+  // Step 3: Exception check — exceptions skip the path dialog only, not the content scan
+  const isExcepted = filePath
+    ? matchesException(filePath, toolName, policy.exceptions ?? [])
+    : false;
 
-  // Step 4: Sensitive path check with tier-based response
-  const pathResult = checkSensitivePath(filePath, toolName);
-  if (pathResult) {
-    if (pathResult.tier === "advisory") {
-      // Advisory: inject context into Claude's next message, then continue to content scan
-      console.log(
-        JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            additionalContext: pathResult.message,
-          },
-        })
-      );
-    } else {
-      // high or critical: show ask dialog and exit
-      console.log(
-        JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "ask",
-            permissionDecisionReason: pathResult.message,
-          },
-        })
-      );
-      await appendHookLogEntry(filePath, toolName, "ask", pathResult.tier, pathResult.ruleId);
-      process.exit(0);
+  // Step 4: Sensitive path check with tier-based response (skipped for excepted files)
+  let advisoryMessage: string | null = null;
+  let advisoryRuleId: string | undefined;
+  if (!isExcepted) {
+    const pathResult = checkSensitivePath(filePath, toolName);
+    if (pathResult) {
+      if (pathResult.tier === "advisory") {
+        // Buffer the advisory — emit after content scan to avoid double stdout
+        advisoryMessage = pathResult.message;
+        advisoryRuleId = pathResult.ruleId;
+      } else {
+        // high or critical: show ask dialog and exit
+        console.log(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse",
+              permissionDecision: "ask",
+              permissionDecisionReason: pathResult.message,
+            },
+          })
+        );
+        await appendHookLogEntry(filePath, toolName, "ask", pathResult.tier, pathResult.ruleId);
+        process.exit(0);
+      }
     }
   }
 
@@ -207,21 +208,32 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
   if (toolName === "Write") content = (toolInput.content as string | undefined) ?? "";
   else if (toolName === "Edit") content = (toolInput.new_string as string | undefined) ?? "";
 
+  let hasNonBlockingMatches = false;
   if (content) {
     const result = scanContent(content, policy);
     const blocking = result.matches.filter(
       (m) => m.severity === "high" || m.severity === "critical"
     );
+    hasNonBlockingMatches = result.matches.some(
+      (m) => m.severity === "medium" || m.severity === "low"
+    );
+
     if (blocking.length > 0) {
-      const reasons = blocking
+      // Redact sensitive values before including them in Claude's context
+      const [redacted] = redactSensitiveScanResults([
+        { filePath, matches: blocking, scanned: true },
+      ]);
+      const reasons = redacted.matches
         .map((m) => `${m.ruleId} (${m.severity}): ${m.match}`)
         .join("; ");
+      // Prepend any pending advisory message so the single deny carries all context
+      const prefix = advisoryMessage ? `${advisoryMessage} | ` : "";
       console.log(
         JSON.stringify({
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason: `[crasp] content policy violation — ${reasons}`,
+            permissionDecisionReason: `${prefix}[crasp] content policy violation — ${reasons}`,
           },
         })
       );
@@ -230,9 +242,21 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
     }
   }
 
-  // Step 6: All checks passed
-  if (pathResult?.tier === "advisory") {
-    await appendHookLogEntry(filePath, toolName, "advisory", "advisory", pathResult.ruleId);
+  // Step 6: All checks passed — emit advisory or log outcome
+  if (isExcepted) {
+    await appendHookLogEntry(filePath, toolName, "exception");
+  } else if (advisoryMessage) {
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          additionalContext: advisoryMessage,
+        },
+      })
+    );
+    await appendHookLogEntry(filePath, toolName, "advisory", "advisory", advisoryRuleId);
+  } else if (hasNonBlockingMatches) {
+    await appendHookLogEntry(filePath, toolName, "advisory");
   } else {
     await appendHookLogEntry(filePath, toolName, "clean");
   }

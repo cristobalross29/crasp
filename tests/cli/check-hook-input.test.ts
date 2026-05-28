@@ -257,3 +257,72 @@ describe("check --hook-input edge cases", () => {
     expect(result.status).toBe(0);
   });
 });
+
+describe("check --hook-input redaction", () => {
+  it("deny reason does not contain the raw API token", () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Write"], {
+      input: makePayload({
+        file_path: "/project/config.ts",
+        content: `const key = '${rawToken}';`,
+      }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isDeny).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+    expect(out.reason).toContain("[REDACTED]");
+  });
+});
+
+describe("check --hook-input exceptions + content scan", () => {
+  it("denies when an excepted path has violating content", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-deny-"));
+    try {
+      await writeFile(
+        path.join(tmpDir, "crasp.policy.yml"),
+        `id: test-policy\nname: Test\nrules: []\nexceptions:\n  - path: ".env.local"\n    ops: [write, edit]\n    reason: "Deliberate access"\n`
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Write"],
+        {
+          input: makePayload({
+            file_path: "/project/.env.local",
+            content: "SECRET=sk-abcdefghijklmnopqrstuvwxyz123456",
+          }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(parseOutput(result.stdout).isDeny).toBe(true);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits silently when excepted file has clean content", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-exception-clean-"));
+    try {
+      await writeFile(
+        path.join(tmpDir, "crasp.policy.yml"),
+        `id: test-policy\nname: Test\nrules: []\nexceptions:\n  - path: ".env.local"\n    ops: [write, edit]\n    reason: "Deliberate access"\n`
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Write"],
+        {
+          input: makePayload({ file_path: "/project/.env.local", content: "PORT=3000" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

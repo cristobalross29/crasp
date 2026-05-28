@@ -46,4 +46,17 @@ describe("handlePolicy", () => {
     const result = await handlePolicy(TEST_POLICY);
     expect(result.totalRules).toBe(2);
   });
+
+  it("strips the pattern field from every rule", async () => {
+    const result = await handlePolicy(TEST_POLICY);
+    expect(result.rules.every((r) => !("pattern" in r))).toBe(true);
+  });
+
+  it("keeps all other rule fields intact after stripping pattern", async () => {
+    const result = await handlePolicy(TEST_POLICY);
+    const rule = result.rules.find((r) => r.id === "token-leakage");
+    expect(rule).toBeDefined();
+    expect(rule?.description).toBe("Sensitive token");
+    expect(rule?.severity).toBe("critical");
+  });
 });

@@ -15,9 +15,15 @@ export function matchesException(
   exceptions: PolicyException[]
 ): boolean {
   const basename = path.basename(filePath);
+  const relPath = path.normalize(path.relative(process.cwd(), filePath));
   const normalizedOp = OP_MAP[op];
   return exceptions.some((ex) => {
-    const pathMatches = micromatch.isMatch(basename, ex.path);
+    // Match against basename (simple patterns like ".env.local") OR relative path
+    // (directory-scoped patterns like "secrets/*.key") OR the full path
+    const pathMatches =
+      micromatch.isMatch(basename, ex.path) ||
+      micromatch.isMatch(relPath, ex.path) ||
+      micromatch.isMatch(filePath, ex.path);
     if (!pathMatches) return false;
     return ex.ops.includes("any") || ex.ops.includes(normalizedOp);
   });

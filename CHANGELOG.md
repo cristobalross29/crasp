@@ -11,6 +11,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.1] - 2026-05-28
+
+### Fixed
+
+- **Secret redaction in deny messages** — The `permissionDecisionReason` sent to Claude no
+  longer contains raw matched values (e.g. `sk-abc...`). Matched secrets are now redacted to
+  `sk-ab...[REDACTED]...1234` before appearing in Claude's context. The same fix closes an
+  identical leak in `--stdin` stderr output.
+- **Single JSON object on stdout** — When a file path triggered an advisory warning AND the
+  content scan found a blocking violation, two JSON objects were emitted to stdout (which
+  Claude Code could not parse). Advisory messages are now buffered and either merged into the
+  deny reason or emitted once at the end when no block fires.
+- **Exceptions now run the content scan** — Previously an entry in `crasp.policy.yml`
+  exceptions would silently exit before the content scan, meaning a whitelisted path could
+  write a leaked API key without a deny. Exceptions now only skip the sensitive-path ask
+  dialog; content scanning always runs.
+- **Full-path matching for exceptions** — `matchesException` previously matched only on the
+  file basename, so a directory-scoped exception pattern like `secrets/*.key` would never
+  match. Matching now checks the basename, the project-relative path, and the absolute path.
+- **Medium/low matches no longer logged as clean** — Jailbreak and system-prompt-extraction
+  matches (medium severity) were silently dropped and logged as `clean`. They are now logged
+  as `advisory` so they appear in `crasp hook-log`.
+- **MCP policy tool strips regex patterns** — `crasp_policy` no longer returns the raw regex
+  pattern strings that power detection rules. Exposing them to Claude would let it craft
+  content that evades detection. The `id`, `description`, `severity`, `target`, and `message`
+  fields are still returned.
+
+---
+
 ## [0.1.0] - 2026-05-24
 
 Initial release.
@@ -46,5 +75,6 @@ Initial release.
 - **Run reports** — every scenario run stored under `.crasp/runs/` as terminal, JSON,
   or HTML output.
 
-[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/cristobalross29/crasp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cristobalross29/crasp/releases/tag/v0.1.0
