@@ -34,7 +34,7 @@ function redactValue(value: string): string {
 }
 
 const SECRET_TOKEN_PATTERNS: RegExp[] = [
-  /sk-[A-Za-z0-9_-]{16,}/g,
+  /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{16,}/g,
   /github_pat_[A-Za-z0-9_]{20,}/g,
   /ghp_[A-Za-z0-9]{36}/g,
   /AKIA[0-9A-Z]{16}/g,

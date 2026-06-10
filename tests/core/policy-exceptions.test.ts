@@ -250,4 +250,10 @@ describe("redactCommand", () => {
     const cmd = 'curl -H "Authorization: Bearer sk-proj-ABCDEF1234567890abcdef"';
     expect(redactCommand(cmd)).toBe(redactCommand(cmd));
   });
+
+  it("does not redact kebab-case words that merely end in sk-", () => {
+    expect(redactCommand("pnpm test task-1234567890abcdef01234567")).toBe(
+      "pnpm test task-1234567890abcdef01234567"
+    );
+  });
 });

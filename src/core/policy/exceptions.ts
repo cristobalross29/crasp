@@ -3,7 +3,6 @@ import path from "node:path";
 import type { PolicyException, ExceptionOp } from "../../types/index.js";
 import type { HookTool } from "../scanner/sensitive-paths.js";
 
-
 const OP_MAP: Record<HookTool, ExceptionOp> = {
   Write: "write",
   Edit: "edit",
