@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![node >=18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
 
-Crasp intercepts every file operation Claude Code makes — Write, Edit, Read — and
-blocks anything that violates your policy before it happens. No cloud. No tracking.
-Entirely on your machine.
+Crasp intercepts every file operation Claude Code makes — Write, Edit, Read, and Bash
+commands — and blocks or flags anything that violates your policy before it happens.
+No cloud. No tracking. Entirely on your machine.
 
 ## One command to get started
 
@@ -23,7 +23,7 @@ protection is live. You do not need to run any other command.
 
 | What | How |
 | --- | --- |
-| Hook guard | Registers itself in `.claude/settings.json` so Claude Code calls Crasp before every Write, Edit, and Read |
+| Hook guard | Registers itself in `.claude/settings.json` so Claude Code calls Crasp before every Write, Edit, Read, and Bash command |
 | MCP server | Adds itself to `.mcp.json` so Claude Code starts the Crasp MCP server automatically in the background |
 | Git hook | Installs a pre-commit hook that scans staged files before every commit |
 | Starter policy | Writes `crasp.policy.yml` with a default credential-theft rule you can extend |
@@ -39,6 +39,10 @@ Crasp operates at two layers simultaneously:
 Every time Claude Code is about to write or edit a file, Crasp checks the content and
 path against your policy first. If it matches a rule, Crasp either warns Claude, asks
 for confirmation, or blocks the operation outright — before a single byte is written.
+
+Bash commands are intercepted before they run — destructive deletes, force-pushes,
+privilege escalation, and secret-exfiltration attempts surface an approval dialog;
+everything is logged. Crasp never hard-blocks Bash commands; you always decide.
 
 **Layer 2 — MCP server (active self-audit)**
 Claude Code connects to Crasp as an MCP server. Claude can call `crasp_check` before
@@ -83,6 +87,22 @@ rules:
 
 Crasp merges your rules with the built-in ones on every check. Built-in rules always
 stay active — your file adds coverage, it cannot weaken the baseline.
+
+To pre-approve a Bash command you run frequently, add a `command` exception:
+
+```yaml
+exceptions:
+  - command: "^rm -rf node_modules$"
+    ops: [bash]
+    reason: "Routine cleanup I run all the time"
+```
+
+Command patterns are regular expressions matched against the whole command — anchor
+them (`^…$`) so a permissive pattern doesn't approve more than you intend.
+
+**Upgrading from a pre-Bash install?** Re-run `crasp setup` — hooks update
+automatically. Run `crasp setup --force` if you also want the CLAUDE.md section text
+refreshed.
 
 ## Day-to-day commands
 

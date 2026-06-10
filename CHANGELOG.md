@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Bash command interception via PreToolUse hook. Destructive commands
+  (rm -rf, force-push, sudo, chmod 777, fork bombs), secret exfiltration, and
+  leaked secrets in commands surface an approval dialog — Crasp never
+  hard-blocks Bash; the user always decides. Pre-approve specific commands
+  with `command:` exceptions (anchored regex) in crasp.policy.yml.
+
 ---
 
 ## [0.1.1] - 2026-05-28
