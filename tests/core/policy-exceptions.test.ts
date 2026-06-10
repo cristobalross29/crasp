@@ -37,6 +37,14 @@ describe("policyExceptionSchema", () => {
     expect(() => policyExceptionSchema.parse({ path: "" })).toThrow();
   });
 
+  it("rejects an exception with neither path nor command", () => {
+    expect(() => policyExceptionSchema.parse({ ops: ["read"] })).toThrow();
+  });
+
+  it("rejects an empty command", () => {
+    expect(() => policyExceptionSchema.parse({ command: "", ops: ["bash"] })).toThrow();
+  });
+
   it("rejects empty ops array", () => {
     expect(() =>
       policyExceptionSchema.parse({ path: ".env.local", ops: [] })
@@ -190,5 +198,9 @@ describe("matchesException", () => {
       { path: ".env.local", ops: ["any"] },
     ];
     expect(matchesException("/project/.env.local", "Read", exceptions)).toBe(true);
+  });
+
+  it("path-based exceptions do not fire for Bash calls (empty filePath)", () => {
+    expect(matchesException("", "Bash", [{ path: ".env", ops: ["bash"] }])).toBe(false);
   });
 });

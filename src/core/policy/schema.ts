@@ -10,13 +10,17 @@ export const policyRuleSchema = z.object({
   message: z.string().optional()
 });
 
-export const policyExceptionSchema = z.object({
-  id: z.string().optional(),
-  path: z.string().min(1).optional(),
-  command: z.string().min(1).optional(),
-  ops: z.array(z.enum(["read", "write", "edit", "bash", "any"])).min(1).default(["any"]),
-  reason: z.string().optional(),
-});
+export const policyExceptionSchema = z
+  .object({
+    id: z.string().optional(),
+    path: z.string().min(1).optional(),
+    command: z.string().min(1).optional(),
+    ops: z.array(z.enum(["read", "write", "edit", "bash", "any"])).min(1).default(["any"]),
+    reason: z.string().optional(),
+  })
+  .refine((v) => v.path !== undefined || v.command !== undefined, {
+    message: "An exception must have at least one of 'path' or 'command'",
+  });
 
 export const policySchema = z.object({
   id: z.string().min(1),

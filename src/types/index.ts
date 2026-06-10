@@ -150,6 +150,7 @@ export type HookLogTier = "advisory" | "high" | "critical";
 export interface HookLogEntry {
   ts: string;
   tool: "Write" | "Edit" | "Read" | "Bash";
+  /** Holds the redacted command string when tool is "Bash". */
   filePath: string;
   outcome: HookLogOutcome;
   tier?: HookLogTier;
