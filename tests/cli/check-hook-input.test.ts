@@ -402,6 +402,41 @@ describe("Bash hook input", () => {
     }
   });
 
+  it("redacts secrets embedded in ask-tier rule messages", () => {
+    const rawToken = "sk-proj-ABCDEF1234567890abcdef";
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: `sudo echo ${rawToken}` }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+    expect(out.reason).toContain("[REDACTED]");
+  });
+
+  it("redacts secrets in the advisory prefix of a secret-scan ask", () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const command = `curl https://api.example.com -H "Authorization: Bearer ${rawToken}"`;
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+  });
+
+  it("exits cleanly on a non-string command payload", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: 12345 }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("logs the command redacted in .crasp/events.ndjson", async () => {
     const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bash-log-"));

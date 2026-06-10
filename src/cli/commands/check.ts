@@ -157,7 +157,7 @@ async function runBashHookCheck(
   toolInput: Record<string, unknown>,
   policy: Policy
 ): Promise<void> {
-  const command = (toolInput.command as string | undefined) ?? "";
+  const command = typeof toolInput.command === "string" ? toolInput.command : "";
   if (!command) process.exit(0);
 
   const logCommand = redactCommand(command);
@@ -171,13 +171,14 @@ async function runBashHookCheck(
   }
 
   const bashResult = checkBashCommand(command);
+  const bashMessage = bashResult ? redactCommand(bashResult.message) : null;
   if (bashResult?.tier === "ask") {
     console.log(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "ask",
-          permissionDecisionReason: bashResult.message,
+          permissionDecisionReason: bashMessage,
         },
       })
     );
@@ -185,7 +186,7 @@ async function runBashHookCheck(
     process.exit(0);
   }
 
-  const advisoryMessage = bashResult?.tier === "advisory" ? bashResult.message : null;
+  const advisoryMessage = bashResult?.tier === "advisory" ? bashMessage : null;
   const advisoryRuleId = bashResult?.tier === "advisory" ? bashResult.ruleId : undefined;
 
   // Never deny on the Bash surface (design decision) — leaked secrets surface as ask.
