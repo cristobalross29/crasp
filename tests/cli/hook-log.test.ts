@@ -180,6 +180,8 @@ describe("hook-log command", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("Bash");
       expect(result.stdout).toContain("rm -rf");
+      // "rm -rf build" is 13 chars — shorter than 20 — so padEnd(20) pads with 7 spaces.
+      expect(result.stdout).toContain("rm -rf build       ");
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }

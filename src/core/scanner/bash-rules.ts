@@ -126,7 +126,7 @@ function buildMessage(rule: BashCommandRule, command: string): string {
   const icon = rule.tier === "ask" ? "⚠️  Crasp — Risky Command" : "ℹ️  Crasp — Notice";
   const approve =
     rule.tier === "ask"
-      ? `\n\nApprove only if you intended this. To pre-approve similar commands, add to crasp.policy.yml:\n  exceptions:\n    - command: "<regex matching this command>"\n      ops: [bash]`
+      ? `\n\nApprove only if you intended this. To pre-approve similar commands, add to crasp.policy.yml:\n  exceptions:\n    - command: "^<this exact command>$"\n      ops: [bash]`
       : "";
   return `${icon}\n\n${rule.describe}\n\nCommand: ${displayCommand(command)}${approve}`;
 }

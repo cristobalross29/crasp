@@ -61,7 +61,7 @@ function fileDisplay(filePath: string): string {
 
 function commandDisplay(command: string): string {
   const oneLine = command.replace(/\s+/g, " ").trim();
-  const truncated = oneLine.length > 20 ? oneLine.slice(0, 17) + "..." : oneLine;
+  const truncated = oneLine.length > 20 ? [...oneLine].slice(0, 17).join("") + "..." : oneLine;
   return truncated.padEnd(20);
 }
 
