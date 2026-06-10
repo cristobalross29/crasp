@@ -13,11 +13,12 @@ interface BashCommandRule {
   describe: string;
 }
 
-const SECRET_FILE = /(\.env(\.[^\s/\\]+)?\b|id_(rsa|dsa|ecdsa|ed25519)\b|\.aws[/\\]credentials\b|\.npmrc\b|\.ssh[/\\])/i;
-const CAPTURED_SECRET = /\$\(\s*cat\b|\$\(.*(secret|token|key|password|cred).*\)/i;
+const SECRET_FILE = /(\.env(?!\.(example|sample|template|dist)\b)(\.[^\s/\\]+)?\b|id_(rsa|dsa|ecdsa|ed25519)\b|\.aws[/\\]credentials\b|\.npmrc\b|\.ssh[/\\])/i;
+const CAPTURED_SECRET = /\$\(\s*cat\b|\$\([^)]*(secret|token|key|password|cred)/i;
 const NET_CMD = /\b(curl|wget|nc|ncat|scp|sftp|ftp|rsync|telnet)\b/i;
 const LOCAL_HOST = /(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)/i;
 
+// Covers combined (-rf, -fr, -Rf…) and separated (-r … -f) flag forms.
 function hasRmRf(c: string): boolean {
   return (
     /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\b/.test(c) ||
@@ -29,6 +30,8 @@ function hasRmRf(c: string): boolean {
 
 // Order matters: checkBashCommand returns the FIRST match. Specific/dangerous
 // rules (secret exfil) come before general ones (plain outbound fetch).
+// Known v1 gaps (accepted): GNU long flags (rm --recursive --force), doas,
+// symbolic chmod (a+rwx). Heuristic layer, not a shell parser.
 const BASH_COMMAND_RULES: BashCommandRule[] = [
   {
     ruleId: "bash-secret-exfil",
@@ -55,7 +58,7 @@ const BASH_COMMAND_RULES: BashCommandRule[] = [
     describe: "World-writable permissions (chmod 777).",
     test: (c) => /\bchmod\s+(-[a-zA-Z]+\s+)*0?777\b/.test(c),
   },
-  { ruleId: "bash-sudo", tier: "ask", describe: "Privilege escalation (sudo).", test: (c) => /\bsudo\b/.test(c) },
+  { ruleId: "bash-sudo", tier: "ask", describe: "Privilege escalation (sudo).", test: (c) => /(^|[;&|(]|&&|\|\|)\s*sudo\b/.test(c.trimStart()) },
   {
     ruleId: "bash-pipe-to-shell",
     tier: "ask",
@@ -112,19 +115,27 @@ const BASH_COMMAND_RULES: BashCommandRule[] = [
   },
 ];
 
+const MAX_SCAN_LENGTH = 8192;
+const MAX_DISPLAY_LENGTH = 200;
+
+function displayCommand(command: string): string {
+  return command.length > MAX_DISPLAY_LENGTH ? command.slice(0, MAX_DISPLAY_LENGTH) + "…" : command;
+}
+
 function buildMessage(rule: BashCommandRule, command: string): string {
   const icon = rule.tier === "ask" ? "⚠️  Crasp — Risky Command" : "ℹ️  Crasp — Notice";
   const approve =
     rule.tier === "ask"
       ? `\n\nApprove only if you intended this. To pre-approve similar commands, add to crasp.policy.yml:\n  exceptions:\n    - command: "<regex matching this command>"\n      ops: [bash]`
       : "";
-  return `${icon}\n\n${rule.describe}\n\nCommand: ${command}${approve}`;
+  return `${icon}\n\n${rule.describe}\n\nCommand: ${displayCommand(command)}${approve}`;
 }
 
 export function checkBashCommand(command: string): BashCommandResult | null {
   if (!command) return null;
+  const scanTarget = command.length > MAX_SCAN_LENGTH ? command.slice(0, MAX_SCAN_LENGTH) : command;
   for (const rule of BASH_COMMAND_RULES) {
-    if (rule.test(command)) {
+    if (rule.test(scanTarget)) {
       return { tier: rule.tier, ruleId: rule.ruleId, message: buildMessage(rule, command) };
     }
   }
