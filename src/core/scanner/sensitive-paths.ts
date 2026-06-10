@@ -8,7 +8,7 @@ export interface SensitivePathResult {
   message: string;
 }
 
-export type HookTool = "Write" | "Edit" | "Read";
+export type HookTool = "Write" | "Edit" | "Read" | "Bash";
 
 interface SensitivePathRule {
   test: (basename: string, fullPath: string) => boolean;

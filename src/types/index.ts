@@ -35,11 +35,12 @@ export interface PolicyRule {
   message?: string;
 }
 
-export type ExceptionOp = "read" | "write" | "edit" | "any";
+export type ExceptionOp = "read" | "write" | "edit" | "bash" | "any";
 
 export interface PolicyException {
   id?: string;
-  path: string;
+  path?: string;
+  command?: string;
   ops: ExceptionOp[];
   reason?: string;
 }
@@ -148,7 +149,7 @@ export type HookLogTier = "advisory" | "high" | "critical";
 
 export interface HookLogEntry {
   ts: string;
-  tool: "Write" | "Edit" | "Read";
+  tool: "Write" | "Edit" | "Read" | "Bash";
   filePath: string;
   outcome: HookLogOutcome;
   tier?: HookLogTier;

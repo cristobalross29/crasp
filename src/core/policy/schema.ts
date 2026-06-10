@@ -12,8 +12,9 @@ export const policyRuleSchema = z.object({
 
 export const policyExceptionSchema = z.object({
   id: z.string().optional(),
-  path: z.string().min(1),
-  ops: z.array(z.enum(["read", "write", "edit", "any"])).min(1).default(["any"]),
+  path: z.string().min(1).optional(),
+  command: z.string().min(1).optional(),
+  ops: z.array(z.enum(["read", "write", "edit", "bash", "any"])).min(1).default(["any"]),
   reason: z.string().optional(),
 });
 

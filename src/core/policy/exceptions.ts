@@ -7,6 +7,7 @@ const OP_MAP: Record<HookTool, ExceptionOp> = {
   Write: "write",
   Edit: "edit",
   Read: "read",
+  Bash: "bash",
 };
 
 export function matchesException(
@@ -18,8 +19,7 @@ export function matchesException(
   const relPath = path.normalize(path.relative(process.cwd(), filePath));
   const normalizedOp = OP_MAP[op];
   return exceptions.some((ex) => {
-    // Match against basename (simple patterns like ".env.local") OR relative path
-    // (directory-scoped patterns like "secrets/*.key") OR the full path
+    if (!ex.path) return false;
     const pathMatches =
       micromatch.isMatch(basename, ex.path) ||
       micromatch.isMatch(relPath, ex.path) ||

@@ -37,10 +37,6 @@ describe("policyExceptionSchema", () => {
     expect(() => policyExceptionSchema.parse({ path: "" })).toThrow();
   });
 
-  it("rejects missing path", () => {
-    expect(() => policyExceptionSchema.parse({ ops: ["read"] })).toThrow();
-  });
-
   it("rejects empty ops array", () => {
     expect(() =>
       policyExceptionSchema.parse({ path: ".env.local", ops: [] })
@@ -78,6 +74,24 @@ describe("PolicyException and Policy types", () => {
       exceptions: [{ path: ".env.local", ops: ["read"] }],
     };
     expect(policy.exceptions).toHaveLength(1);
+  });
+});
+
+describe("bash command exceptions schema", () => {
+  it("parses an exception with a command pattern and bash op", () => {
+    const parsed = policyExceptionSchema.parse({
+      command: "rm -rf node_modules",
+      ops: ["bash"],
+      reason: "routine cleanup",
+    });
+    expect(parsed.command).toBe("rm -rf node_modules");
+    expect(parsed.ops).toEqual(["bash"]);
+  });
+
+  it("still parses a path-only exception with no command", () => {
+    const parsed = policyExceptionSchema.parse({ path: ".env.local", ops: ["read"] });
+    expect(parsed.command).toBeUndefined();
+    expect(parsed.path).toBe(".env.local");
   });
 });
 
