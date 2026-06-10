@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -321,6 +321,109 @@ describe("check --hook-input exceptions + content scan", () => {
       );
       expect(result.status).toBe(0);
       expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Bash hook input", () => {
+  it("asks on rm -rf", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "rm -rf build" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).toContain("rm -rf build");
+  });
+
+  it("asks on a secret leaked in the command (redacted in reason)", () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: `echo "${rawToken}"` }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+    expect(out.reason).toContain("[REDACTED]");
+  });
+
+  it("emits additionalContext (no ask) on a plain outbound fetch", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "curl https://api.example.com" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAdvisory).toBe(true);
+    expect(out.isAsk).toBe(false);
+  });
+
+  it("stays silent (clean) on a harmless command", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "ls -la" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("bypasses an excepted command", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bash-exception-"));
+    try {
+      await writeFile(
+        path.join(tmpDir, "crasp.policy.yml"),
+        [
+          "id: test-policy",
+          "name: Test",
+          "rules: []",
+          "exceptions:",
+          '  - command: "^rm -rf node_modules$"',
+          "    ops: [bash]",
+        ].join("\n") + "\n"
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "rm -rf node_modules" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("logs the command redacted in .crasp/events.ndjson", async () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bash-log-"));
+    try {
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: `echo "${rawToken}"` }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      const logPath = path.join(tmpDir, ".crasp", "events.ndjson");
+      const logRaw = await readFile(logPath, "utf8");
+      const entry = JSON.parse(logRaw.trim()) as {
+        tool: string;
+        filePath: string;
+      };
+      expect(entry.tool).toBe("Bash");
+      expect(entry.filePath).not.toContain(rawToken);
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
