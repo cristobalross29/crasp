@@ -166,4 +166,41 @@ describe("hook-log command", () => {
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("renders a Bash command entry without mangling the command", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-hook-log-bash-"));
+    try {
+      await makeLogDir(tmpDir, [
+        makeEntry({ tool: "Bash", filePath: "rm -rf build", outcome: "ask", ruleId: "bash-rm-rf" }),
+      ]);
+      const result = spawnSync("node", [CLI, "hook-log"], {
+        cwd: tmpDir,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Bash");
+      expect(result.stdout).toContain("rm -rf");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("renders a long Bash command truncated to 17 chars + '...'", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-hook-log-bash-long-"));
+    try {
+      const longCmd = "curl -H 'Authorization: Bearer something' https://api.example.com/v1/endpoint";
+      await makeLogDir(tmpDir, [
+        makeEntry({ tool: "Bash", filePath: longCmd, outcome: "ask" }),
+      ]);
+      const result = spawnSync("node", [CLI, "hook-log"], {
+        cwd: tmpDir,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("curl -H 'Authoriz...");
+      expect(result.stdout).not.toContain("https://api.example.com/v1/endpoint");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
