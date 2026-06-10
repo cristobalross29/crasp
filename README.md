@@ -43,6 +43,9 @@ for confirmation, or blocks the operation outright — before a single byte is w
 Bash commands are intercepted before they run — destructive deletes, force-pushes,
 privilege escalation, and secret-exfiltration attempts surface an approval dialog;
 everything is logged. Crasp never hard-blocks Bash commands; you always decide.
+Detection is heuristic (pattern-based, not a shell parser), so determined obfuscation
+can evade rules — it reduces risk, it is not a sandbox. Secret redaction in the
+activity log is best-effort.
 
 **Layer 2 — MCP server (active self-audit)**
 Claude Code connects to Crasp as an MCP server. Claude can call `crasp_check` before
