@@ -85,13 +85,16 @@ Claude Code fires PreToolUse for Write/Edit/Read/Bash
           2. loadMergedPolicy()             # builtin + user crasp.policy.yml
 
           ── Bash branch ──────────────────────────────────────────────────────
-          3. matchesException()             # command: regex in exceptions → log "exception", exit 0
+          3. matchesBashException()         # command: regex in exceptions → log "exception", exit 0
           4. checkBashCommand()             # heuristic rule engine:
-             advisory → additionalContext injected into Claude, log "advisory", exit 0
              ask      → permissionDecision:"ask" dialog, log "ask", exit 0
+             advisory → buffered (not emitted yet — scanContent runs first)
              (no deny — Bash is always ask-only; user always decides)
-          5. scanContent(command)           # also scan command text vs policy rules
-             match    → permissionDecision:"ask" (not deny), log "ask", exit 0
+          5. scanContent(command)           # scan command text vs policy rules
+             match    → permissionDecision:"ask" (advisory prefix prepended if buffered),
+                        log "ask", exit 0
+             no match + advisory buffered → additionalContext emitted, log "advisory", exit 0
+             no match + no advisory → log "clean", exit 0
 
           ── Write/Edit/Read branch ───────────────────────────────────────────
           3. matchesException()             # if path+op in exceptions → log "exception", exit 0
