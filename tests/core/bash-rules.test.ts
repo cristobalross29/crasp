@@ -158,6 +158,67 @@ describe("checkBashCommand", () => {
     expect(r?.ruleId).not.toBe("bash-sudo");
   });
 
+  // Fix 2 (scan cap raise): padded commands past 8KB must still be detected
+  it("detects rm -rf padded past 8KB (scan cap regression)", () => {
+    const cmd = "printf ok" + " ".repeat(8200) + "; rm -rf /tmp/victim";
+    const r = checkBashCommand(cmd);
+    expect(r?.ruleId).toBe("bash-rm-rf");
+  });
+
+  it("classifies a 1MB command in under 500ms (raised cap perf)", () => {
+    // Place the dangerous part at the START so it's within the scan window,
+    // then pad to ~1MB total. The whole string is scanned (cap is 1M).
+    const cmd = "rm -rf / " + "x ".repeat(499_995);
+    expect(cmd.length).toBeLessThanOrEqual(1_000_000);
+    const t0 = performance.now();
+    const r = checkBashCommand(cmd);
+    const elapsed = performance.now() - t0;
+    expect(elapsed).toBeLessThan(500);
+    expect(r?.ruleId).toBe("bash-rm-rf");
+  });
+
+  // Fix 3 (HIGH): additional rule coverage
+
+  // Brace-expansion rm -{r,f} / rm -{f,r}
+  it("asks on rm -{r,f} /tmp/x (brace expansion)", () => {
+    expect(checkBashCommand("rm -{r,f} /tmp/x")?.ruleId).toBe("bash-rm-rf");
+  });
+
+  it("asks on rm -{f,r} x (brace expansion reversed)", () => {
+    expect(checkBashCommand("rm -{f,r} x")?.ruleId).toBe("bash-rm-rf");
+  });
+
+  it("asks on rm -rf x (still matches)", () => {
+    expect(checkBashCommand("rm -rf x")?.ruleId).toBe("bash-rm-rf");
+  });
+
+  it("does NOT flag 'npm run rm' as bash-rm-rf (brace rule)", () => {
+    expect(checkBashCommand("npm run rm")?.ruleId).not.toBe("bash-rm-rf");
+  });
+
+  // Refspec force-push: git push origin +HEAD:main
+  it("asks on git push origin +HEAD:main (refspec force)", () => {
+    expect(checkBashCommand("git push origin +HEAD:main")?.ruleId).toBe("bash-force-push");
+  });
+
+  it("asks on git push origin +main (refspec force shorthand)", () => {
+    expect(checkBashCommand("git push origin +main")?.ruleId).toBe("bash-force-push");
+  });
+
+  it("asks on git push origin +main:main (refspec force)", () => {
+    expect(checkBashCommand("git push origin +main:main")?.ruleId).toBe("bash-force-push");
+  });
+
+  it("does NOT flag 'git push origin main' as force-push", () => {
+    const r = checkBashCommand("git push origin main");
+    expect(r?.ruleId).not.toBe("bash-force-push");
+  });
+
+  it("does NOT flag 'git commit -m \"a+b\"' as force-push", () => {
+    const r = checkBashCommand('git commit -m "a+b"');
+    expect(r?.ruleId).not.toBe("bash-force-push");
+  });
+
   // Fix 3: .env template files excluded from SECRET_FILE
   it("advises on reading .env (plain)", () => {
     expect(checkBashCommand("cat .env")?.ruleId).toBe("bash-read-secret");

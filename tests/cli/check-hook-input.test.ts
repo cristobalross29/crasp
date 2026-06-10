@@ -256,6 +256,68 @@ describe("check --hook-input edge cases", () => {
     });
     expect(result.status).toBe(0);
   });
+
+  // Fix 4a: null JSON payload must not crash
+  it("exits 0 with no output when payload is JSON null (Write)", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Write"], {
+      input: "null",
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  it("exits 0 with no output when payload is JSON null (Bash)", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: "null",
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  // Fix 4b: malformed user crasp.policy.yml must fall back to builtin (not crash)
+  it("exits 0 on clean command when policy YAML is malformed (builtin fallback)", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bad-policy-"));
+    try {
+      await writeFile(path.join(tmpDir, "crasp.policy.yml"), ":::not yaml:::\n");
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "ls -la" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still fires ask on rm -rf when policy YAML is malformed (builtin active)", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bad-policy-rmrf-"));
+    try {
+      await writeFile(path.join(tmpDir, "crasp.policy.yml"), ":::not yaml:::\n");
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "rm -rf /tmp/x" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(parseOutput(result.stdout).isAsk).toBe(true);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("check --hook-input redaction", () => {

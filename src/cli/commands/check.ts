@@ -244,11 +244,20 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
     process.exit(0);
   }
 
+  // JSON.parse("null") returns null — guard before any property access.
+  if (payload === null || typeof payload !== "object") process.exit(0);
+
   const toolInput = (payload.tool_input ?? {}) as Record<string, unknown>;
   const filePath = (toolInput.file_path as string | undefined) ?? "";
 
-  // Step 2: Load policy
-  const policy = await loadMergedPolicy();
+  // Step 2: Load policy — fall back to builtin-only if the user policy file is malformed
+  // so a broken crasp.policy.yml never freezes every hooked tool call.
+  let policy: Policy;
+  try {
+    policy = await loadMergedPolicy();
+  } catch {
+    policy = mergeWithBuiltin(undefined);
+  }
 
   if (toolName === "Bash") {
     await runBashHookCheck(toolInput, policy);

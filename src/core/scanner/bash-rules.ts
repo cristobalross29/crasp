@@ -18,13 +18,16 @@ const CAPTURED_SECRET = /\$\(\s*cat\b|\$\([^)]*(secret|token|key|password|cred)/
 const NET_CMD = /\b(curl|wget|nc|ncat|scp|sftp|ftp|rsync|telnet)\b/i;
 const LOCAL_HOST = /(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)/i;
 
-// Covers combined (-rf, -fr, -Rf…) and separated (-r … -f) flag forms.
+// Covers combined (-rf, -fr, -Rf…), separated (-r … -f), and brace-expansion
+// (rm -{r,f}, rm -{f,r}) flag forms.
 function hasRmRf(c: string): boolean {
   return (
     /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\b/.test(c) ||
     /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\b/.test(c) ||
     (/\brm\s+-r\b/.test(c) && /-f\b/.test(c)) ||
-    (/\brm\s+-f\b/.test(c) && /-r\b/.test(c))
+    (/\brm\s+-f\b/.test(c) && /-r\b/.test(c)) ||
+    /\brm\s+-\{[rf,]*r[rf,]*\}/.test(c) ||
+    /\brm\s+-\{[rf,]*f[rf,]*\}/.test(c)
   );
 }
 
@@ -69,7 +72,11 @@ const BASH_COMMAND_RULES: BashCommandRule[] = [
     ruleId: "bash-force-push",
     tier: "ask",
     describe: "Force-pushing rewrites remote history.",
-    test: (c) => /\bgit\s+push\b[^&|;]*(--force(?!-with-lease)\b|\s-f\b)/.test(c),
+    // Matches --force / -f flags AND refspec force-push (+ref form: git push origin +HEAD:main).
+    // The refspec pattern requires whitespace before + so 'git commit -m "a+b"' is not flagged.
+    test: (c) =>
+      /\bgit\s+push\b[^&|;]*(--force(?!-with-lease)\b|\s-f\b)/.test(c) ||
+      /\bgit\s+push\b[^&|;]*\s\+[A-Za-z0-9_./-]+/.test(c),
   },
   {
     ruleId: "bash-git-hard-reset",
@@ -115,7 +122,11 @@ const BASH_COMMAND_RULES: BashCommandRule[] = [
   },
 ];
 
-const MAX_SCAN_LENGTH = 8192;
+// Raised from 8192 to 1_000_000: commands padded past 8KB were evading all rules.
+// Our rule regexes are linear (no nested quantifiers), so a 1MB cap is safe.
+// The per-exception cap in check.ts stays at 8KB — that code runs user-authored
+// regex (potential ReDoS surface) and is deliberately NOT raised here.
+const MAX_SCAN_LENGTH = 1_000_000;
 const MAX_DISPLAY_LENGTH = 200;
 
 function displayCommand(command: string): string {
