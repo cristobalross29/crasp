@@ -284,7 +284,7 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   );
 
   if (allInstalled) {
-    console.log(chalk.yellow("Skipped .claude/settings.json write hook (already exists)"));
+    console.log(chalk.yellow("Skipped .claude/settings.json hooks (already installed)"));
     return;
   }
 

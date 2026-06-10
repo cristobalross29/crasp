@@ -79,10 +79,10 @@ describe("setupCommand", () => {
       expect(Array.isArray(preToolUse)).toBe(true);
       expect(preToolUse).toHaveLength(4);
 
-      const matchers = preToolUse.map((h: any) => h.matcher);
+      const matchers = preToolUse.map((h: Record<string, unknown>) => h.matcher);
       expect(matchers).toEqual(expect.arrayContaining(["Write", "Edit", "Read", "Bash"]));
 
-      const bashHook = preToolUse.find((h: any) => h.matcher === "Bash");
+      const bashHook = preToolUse.find((h: Record<string, unknown>) => h.matcher === "Bash");
       expect(JSON.stringify(bashHook)).toContain("check --hook-input Bash");
 
       for (const tool of ["Write", "Edit", "Read", "Bash"] as const) {
