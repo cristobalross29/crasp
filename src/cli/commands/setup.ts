@@ -131,8 +131,8 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   // Claude Code MCP integration
   await setupMcpIntegration(root);
 
-  // Claude Code PreToolUse Write hook — always-on, harness-level enforcement
-  await ensureClaudeCodeWriteHook(root);
+  // Claude Code PreToolUse hooks — always-on, harness-level enforcement
+  await ensureClaudeCodeHooks(root);
 
   // CLAUDE.md documentation block
   await ensureClaudeMdSection(root, options.force);
@@ -141,7 +141,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   console.log(
     chalk.dim(
       "\nWhat's now running (automatically, no extra commands needed):\n" +
-        "  Hook guard  — every Write, Edit, and Read Claude Code makes is intercepted\n" +
+        "  Hook guard  — every Write, Edit, Read, and Bash command Claude Code makes is intercepted\n" +
         "  MCP server  — Claude Code will start it on its own via .mcp.json\n" +
         "  Git hook    — staged files are scanned before every commit\n" +
         "\nOptional next steps:\n" +
@@ -245,7 +245,7 @@ async function setupMcpIntegration(root: string): Promise<void> {
   console.log(chalk.dim("Wrote .mcp.json with crasp MCP server"));
 }
 
-const HOOK_TOOLS = ["Write", "Edit", "Read"] as const;
+const HOOK_TOOLS = ["Write", "Edit", "Read", "Bash"] as const;
 type HookToolName = (typeof HOOK_TOOLS)[number];
 
 function isCraspHook(h: unknown, tool: HookToolName): boolean {
@@ -261,7 +261,7 @@ function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
   return isCraspHook(h, tool) && JSON.stringify(h).includes("--hook-input");
 }
 
-async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
+async function ensureClaudeCodeHooks(root: string): Promise<void> {
   const claudeDir = path.join(root, ".claude");
   const settingsPath = path.join(claudeDir, "settings.json");
 
@@ -278,7 +278,7 @@ async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
   const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
 
-  // If all three new-format hooks are already installed, nothing to do
+  // If all four new-format hooks are already installed, nothing to do
   const allInstalled = HOOK_TOOLS.every((tool) =>
     preToolUse.some((h) => isNewFormatHook(h, tool))
   );
@@ -307,7 +307,7 @@ async function ensureClaudeCodeWriteHook(root: string): Promise<void> {
 
   await mkdir(claudeDir, { recursive: true });
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Write, Edit, Read)"));
+  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Write, Edit, Read, Bash)"));
 }
 
 // ── CLAUDE.md documentation block ────────────────────────────────────────────
@@ -318,8 +318,9 @@ const CLAUDE_MD_SENTINEL_END = "<!-- crasp:end -->";
 const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
 ## Crasp
 
-Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, and Read.
+Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, Read, and Bash.
 Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
+Bash commands are screened for destructive actions and secret exfiltration before they run.
 Content written to files is also scanned for leaked secrets and policy violations.
 Policy rules live in \`crasp.policy.yml\`. Run \`crasp status\` to verify configuration.
 ${CLAUDE_MD_SENTINEL_END}`;
