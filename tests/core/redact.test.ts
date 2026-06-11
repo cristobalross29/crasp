@@ -98,8 +98,10 @@ describe("redactCommand", () => {
 
   // FIX 1: Google API key
   it("redacts Google API key (AIza...)", () => {
-    // Google API keys: AIza + exactly 35 alphanumeric/dash/underscore chars = 39 total
-    const key = "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456";
+    // Google API keys: AIza + exactly 35 alphanumeric/dash/underscore chars = 39 total.
+    // Built by concatenation so no contiguous key-shaped literal exists in source
+    // (avoids tripping GitHub secret scanning on this synthetic fixture).
+    const key = "AIza" + "SyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456";
     const out = redactCommand(`curl "https://maps.googleapis.com/maps/api?key=${key}"`);
     expect(out).not.toContain(key);
     expect(out).toContain("[REDACTED]");
