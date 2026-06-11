@@ -9,12 +9,54 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.1.2] - 2026-06-11
+
 ### Added
-- Bash command interception via PreToolUse hook. Destructive commands
-  (rm -rf, force-push, sudo, chmod 777, fork bombs), secret exfiltration, and
-  leaked secrets in commands surface an approval dialog — Crasp never
-  hard-blocks Bash; the user always decides. Pre-approve specific commands
-  with `command:` exceptions (anchored regex) in crasp.policy.yml.
+
+- **Bash command interception** — `crasp setup` now installs a fourth `PreToolUse`
+  hook on `Bash`, the highest-risk surface an agent touches. Every command Claude
+  Code runs is screened by a curated rule engine before it executes:
+  - *Destructive / risky* (surface an approval dialog): `rm -rf` (including
+    `rm -{r,f}` brace forms), `git push --force` and refspec force-push
+    (`+HEAD:main`), `git reset --hard`, `sudo`, `chmod 777`, `dd`/`mkfs` disk
+    writes, fork bombs, `curl|wget … | sh`, history wipes, database drops, and
+    package publishes.
+  - *Secret exfiltration* (approval dialog): network commands that reference a
+    secret file (`.env`, `id_rsa`, `~/.aws/credentials`) or a captured secret
+    (`$(cat …)`).
+  - *Advisory* (a note injected into Claude's context, no dialog): outbound
+    `curl`/`wget` to external hosts, reading secret files to stdout, global
+    package installs.
+  - Crasp **never hard-blocks a Bash command** — the strongest outcome is an
+    "ask" dialog, so you always make the final call.
+- **Bash command exceptions** — pre-approve specific commands with a `command:`
+  regex and the new `bash` op in `crasp.policy.yml`, e.g.
+  `- command: "^rm -rf node_modules$"` / `ops: [bash]`. Anchor patterns so a
+  permissive regex does not approve more than you intend.
+- **`crasp hook-log`** now renders Bash command entries alongside file operations.
+
+### Security
+
+- **Broadened secret redaction in the activity log and hook messages.** Commands
+  are sanitized before they are written to `.crasp/events.ndjson` or sent to
+  Claude. In addition to the existing `sk-*`, `github_pat_*`, `ghp_*`, AWS
+  `AKIA*`, Slack, and JWT patterns, redaction now covers URL userinfo credentials
+  (`scheme://user:pass@host`), `curl -u user:pass`, secret-named environment
+  assignments (`*_TOKEN=`, `*_SECRET=`, `*_PASSWORD=`, `*_KEY=`, …), Stripe
+  (`sk_live_*`/`rk_*`), GitLab (`glpat-*`), and Google (`AIza*`) keys, and PEM
+  private-key blocks.
+
+### Changed
+
+- **The PreToolUse hook now fails open on malformed input** so a mistake never
+  breaks your workflow: a `null` or non-object payload exits cleanly, and a
+  malformed `crasp.policy.yml` falls back to the built-in rules instead of
+  erroring on every Write, Edit, Read, and Bash call.
+- **Policy exceptions are validated more strictly** — an exception with neither a
+  `path` nor a `command` is now rejected at load time instead of silently
+  matching nothing.
 
 ---
 
@@ -82,6 +124,7 @@ Initial release.
 - **Run reports** — every scenario run stored under `.crasp/runs/` as terminal, JSON,
   or HTML output.
 
-[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/cristobalross29/crasp/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cristobalross29/crasp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cristobalross29/crasp/releases/tag/v0.1.0
