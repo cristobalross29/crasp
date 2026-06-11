@@ -19,8 +19,8 @@ const program = new Command();
 
 program
   .name("crasp")
-  .description("Local-first CLI for testing AI agent transcripts against scenario expectations and safety policies")
-  .version("0.1.1");
+  .description("Local-first security layer for Claude Code — intercepts Write, Edit, Read, and Bash via PreToolUse hooks to block leaked secrets, dangerous commands, and policy violations")
+  .version("0.1.2");
 
 program
   .command("init")
