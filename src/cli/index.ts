@@ -49,7 +49,7 @@ program
   .description("check files for Crasp policy matches")
   .option("--staged", "scan staged git files")
   .option("--stdin", "read content from stdin and check against policy")
-  .option("--hook-input <tool>", "check a PreToolUse hook JSON payload from stdin (Write, Edit, Read)")
+  .option("--hook-input <tool>", "check a PreToolUse hook JSON payload from stdin (Write, Edit, Read, Bash)")
   .action(checkCommand);
 
 program

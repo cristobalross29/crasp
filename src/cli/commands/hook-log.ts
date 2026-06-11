@@ -59,6 +59,12 @@ function fileDisplay(filePath: string): string {
   return display.padEnd(20);
 }
 
+function commandDisplay(command: string): string {
+  const oneLine = command.replace(/\s+/g, " ").trim();
+  const truncated = oneLine.length > 20 ? [...oneLine].slice(0, 17).join("") + "..." : oneLine;
+  return truncated.padEnd(20);
+}
+
 function dayLabel(dateStr: string): string {
   const today = new Date().toLocaleDateString("en-CA");
   const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA");
@@ -197,7 +203,10 @@ export async function hookLogCommand(options: HookLogOptions = {}): Promise<void
       const time     = formatTime(entry.ts);
       const ic       = icon(entry.outcome);
       const tool     = entry.tool.padEnd(5);
-      const filePart = fileDisplay(entry.filePath);
+      const filePart =
+        entry.tool === "Bash"
+          ? commandDisplay(entry.filePath)
+          : fileDisplay(entry.filePath);
       const label    = outcomeLabel(entry);
 
       console.log(`  ${time}  ${ic}  ${tool}  ${filePart}  ${label}`);

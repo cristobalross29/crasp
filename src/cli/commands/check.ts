@@ -8,9 +8,10 @@ import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.js";
 import { checkSensitivePath } from "../../core/scanner/sensitive-paths.js";
-import { matchesException } from "../../core/policy/exceptions.js";
+import { matchesException, matchesBashException } from "../../core/policy/exceptions.js";
 import { appendHookLogEntry } from "../../core/hook-log/index.js";
-import { redactSensitiveScanResults } from "../../core/scanner/redact.js";
+import { redactSensitiveScanResults, redactCommand } from "../../core/scanner/redact.js";
+import { checkBashCommand } from "../../core/scanner/bash-rules.js";
 import type { FileScanResult, Policy, Severity } from "../../types/index.js";
 import type { HookTool } from "../../core/scanner/sensitive-paths.js";
 
@@ -152,6 +153,84 @@ function hasSeverityAtOrAbove(
   );
 }
 
+async function runBashHookCheck(
+  toolInput: Record<string, unknown>,
+  policy: Policy
+): Promise<void> {
+  const command = typeof toolInput.command === "string" ? toolInput.command : "";
+  if (!command) process.exit(0);
+
+  const logCommand = redactCommand(command);
+
+  // Cap what user-authored exception regexes see, mirroring bash-rules' own
+  // 8KB scan cap — bounds pathological-regex runtime on huge commands.
+  const exceptionTarget = command.length > 8192 ? command.slice(0, 8192) : command;
+  if (matchesBashException(exceptionTarget, policy.exceptions ?? [])) {
+    await appendHookLogEntry(logCommand, "Bash", "exception");
+    process.exit(0);
+  }
+
+  const bashResult = checkBashCommand(command);
+  const bashMessage = bashResult ? redactCommand(bashResult.message) : null;
+  if (bashResult?.tier === "ask") {
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "ask",
+          permissionDecisionReason: bashMessage,
+        },
+      })
+    );
+    await appendHookLogEntry(logCommand, "Bash", "ask", undefined, bashResult.ruleId);
+    process.exit(0);
+  }
+
+  const advisoryMessage = bashResult?.tier === "advisory" ? bashMessage : null;
+  const advisoryRuleId = bashResult?.tier === "advisory" ? bashResult.ruleId : undefined;
+
+  // Never deny on the Bash surface (design decision) — leaked secrets surface as ask.
+  const scan = scanContent(command, policy);
+  const blocking = scan.matches.filter(
+    (m) => m.severity === "high" || m.severity === "critical"
+  );
+  if (blocking.length > 0) {
+    const [redacted] = redactSensitiveScanResults([
+      { filePath: "(bash command)", matches: blocking, scanned: true },
+    ]);
+    const reasons = redacted.matches
+      .map((m) => `${m.ruleId} (${m.severity}): ${m.match}`)
+      .join("; ");
+    const prefix = advisoryMessage ? `${advisoryMessage} | ` : "";
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "ask",
+          permissionDecisionReason: `${prefix}[crasp] secret detected in command — ${reasons}`,
+        },
+      })
+    );
+    await appendHookLogEntry(logCommand, "Bash", "ask", undefined, blocking[0].ruleId);
+    process.exit(0);
+  }
+
+  if (advisoryMessage) {
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          additionalContext: advisoryMessage,
+        },
+      })
+    );
+    await appendHookLogEntry(logCommand, "Bash", "advisory", "advisory", advisoryRuleId);
+  } else {
+    await appendHookLogEntry(logCommand, "Bash", "clean");
+  }
+  process.exit(0);
+}
+
 async function runHookInputCheck(toolName: HookTool): Promise<void> {
   // Step 1: Read stdin and parse JSON payload
   const chunks: Buffer[] = [];
@@ -165,11 +244,25 @@ async function runHookInputCheck(toolName: HookTool): Promise<void> {
     process.exit(0);
   }
 
+  // JSON.parse("null") returns null — guard before any property access.
+  if (payload === null || typeof payload !== "object") process.exit(0);
+
   const toolInput = (payload.tool_input ?? {}) as Record<string, unknown>;
   const filePath = (toolInput.file_path as string | undefined) ?? "";
 
-  // Step 2: Load policy
-  const policy = await loadMergedPolicy();
+  // Step 2: Load policy — fall back to builtin-only if the user policy file is malformed
+  // so a broken crasp.policy.yml never freezes every hooked tool call.
+  let policy: Policy;
+  try {
+    policy = await loadMergedPolicy();
+  } catch {
+    policy = mergeWithBuiltin(undefined);
+  }
+
+  if (toolName === "Bash") {
+    await runBashHookCheck(toolInput, policy);
+    return;
+  }
 
   // Step 3: Exception check — exceptions skip the path dialog only, not the content scan
   const isExcepted = filePath

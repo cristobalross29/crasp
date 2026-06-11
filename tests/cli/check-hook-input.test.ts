@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -256,6 +256,68 @@ describe("check --hook-input edge cases", () => {
     });
     expect(result.status).toBe(0);
   });
+
+  // Fix 4a: null JSON payload must not crash
+  it("exits 0 with no output when payload is JSON null (Write)", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Write"], {
+      input: "null",
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  it("exits 0 with no output when payload is JSON null (Bash)", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: "null",
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  // Fix 4b: malformed user crasp.policy.yml must fall back to builtin (not crash)
+  it("exits 0 on clean command when policy YAML is malformed (builtin fallback)", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bad-policy-"));
+    try {
+      await writeFile(path.join(tmpDir, "crasp.policy.yml"), ":::not yaml:::\n");
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "ls -la" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still fires ask on rm -rf when policy YAML is malformed (builtin active)", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bad-policy-rmrf-"));
+    try {
+      await writeFile(path.join(tmpDir, "crasp.policy.yml"), ":::not yaml:::\n");
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "rm -rf /tmp/x" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(parseOutput(result.stdout).isAsk).toBe(true);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("check --hook-input redaction", () => {
@@ -321,6 +383,144 @@ describe("check --hook-input exceptions + content scan", () => {
       );
       expect(result.status).toBe(0);
       expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Bash hook input", () => {
+  it("asks on rm -rf", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "rm -rf build" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).toContain("rm -rf build");
+  });
+
+  it("asks on a secret leaked in the command (redacted in reason)", () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: `echo "${rawToken}"` }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+    expect(out.reason).toContain("[REDACTED]");
+  });
+
+  it("emits additionalContext (no ask) on a plain outbound fetch", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "curl https://api.example.com" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAdvisory).toBe(true);
+    expect(out.isAsk).toBe(false);
+  });
+
+  it("stays silent (clean) on a harmless command", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: "ls -la" }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("bypasses an excepted command", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bash-exception-"));
+    try {
+      await writeFile(
+        path.join(tmpDir, "crasp.policy.yml"),
+        [
+          "id: test-policy",
+          "name: Test",
+          "rules: []",
+          "exceptions:",
+          '  - command: "^rm -rf node_modules$"',
+          "    ops: [bash]",
+        ].join("\n") + "\n"
+      );
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: "rm -rf node_modules" }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts secrets embedded in ask-tier rule messages", () => {
+    const rawToken = "sk-proj-ABCDEF1234567890abcdef";
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: `sudo echo ${rawToken}` }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+    expect(out.reason).toContain("[REDACTED]");
+  });
+
+  it("redacts secrets in the advisory prefix of a secret-scan ask", () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const command = `curl https://api.example.com -H "Authorization: Bearer ${rawToken}"`;
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    const out = parseOutput(result.stdout);
+    expect(out.isAsk).toBe(true);
+    expect(out.reason).not.toContain(rawToken);
+  });
+
+  it("exits cleanly on a non-string command payload", () => {
+    const result = spawnSync("node", [CLI, "check", "--hook-input", "Bash"], {
+      input: makePayload({ command: 12345 }),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("logs the command redacted in .crasp/events.ndjson", async () => {
+    const rawToken = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-bash-log-"));
+    try {
+      const result = spawnSync(
+        "node",
+        [CLI, "check", "--hook-input", "Bash"],
+        {
+          input: makePayload({ command: `echo "${rawToken}"` }),
+          encoding: "utf8",
+          cwd: tmpDir,
+        }
+      );
+      expect(result.status).toBe(0);
+      const logPath = path.join(tmpDir, ".crasp", "events.ndjson");
+      const logRaw = await readFile(logPath, "utf8");
+      const entry = JSON.parse(logRaw.trim()) as {
+        tool: string;
+        filePath: string;
+      };
+      expect(entry.tool).toBe("Bash");
+      expect(entry.filePath).not.toContain(rawToken);
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }

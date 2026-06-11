@@ -7,7 +7,24 @@ const OP_MAP: Record<HookTool, ExceptionOp> = {
   Write: "write",
   Edit: "edit",
   Read: "read",
+  Bash: "bash",
 };
+
+export function matchesBashException(
+  command: string,
+  exceptions: PolicyException[]
+): boolean {
+  return exceptions.some((ex) => {
+    if (!ex.command) return false;
+    if (!(ex.ops.includes("bash") || ex.ops.includes("any"))) return false;
+    try {
+      return new RegExp(ex.command).test(command);
+    } catch {
+      // Invalid regex in user policy — fail closed on the match (no bypass)
+      return false;
+    }
+  });
+}
 
 export function matchesException(
   filePath: string,
@@ -18,8 +35,7 @@ export function matchesException(
   const relPath = path.normalize(path.relative(process.cwd(), filePath));
   const normalizedOp = OP_MAP[op];
   return exceptions.some((ex) => {
-    // Match against basename (simple patterns like ".env.local") OR relative path
-    // (directory-scoped patterns like "secrets/*.key") OR the full path
+    if (!ex.path) return false;
     const pathMatches =
       micromatch.isMatch(basename, ex.path) ||
       micromatch.isMatch(relPath, ex.path) ||

@@ -1,8 +1,9 @@
 # Crasp
 
-Local-first security layer for Claude Code. Intercepts Write, Edit, and Read operations
-via PreToolUse hooks, scans content for leaked secrets and policy violations, and keeps a
-persistent activity log. Also exposes an MCP server so Claude can self-check before acting.
+Local-first security layer for Claude Code. Intercepts Write, Edit, Read, and Bash
+operations via PreToolUse hooks, scans content for leaked secrets and policy violations,
+and keeps a persistent activity log. Also exposes an MCP server so Claude can self-check
+before acting.
 
 ## Commands
 

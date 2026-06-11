@@ -62,7 +62,7 @@ describe("setupCommand", () => {
     }
   });
 
-  it("writes PreToolUse hooks for Write, Edit, and Read to .claude/settings.json", async () => {
+  it("writes PreToolUse hooks for Write, Edit, Read, and Bash to .claude/settings.json", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-hook-test-"));
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
@@ -77,8 +77,15 @@ describe("setupCommand", () => {
       expect(hooks).toBeDefined();
       const preToolUse = hooks.PreToolUse as Array<Record<string, unknown>>;
       expect(Array.isArray(preToolUse)).toBe(true);
+      expect(preToolUse).toHaveLength(4);
 
-      for (const tool of ["Write", "Edit", "Read"] as const) {
+      const matchers = preToolUse.map((h: Record<string, unknown>) => h.matcher);
+      expect(matchers).toEqual(expect.arrayContaining(["Write", "Edit", "Read", "Bash"]));
+
+      const bashHook = preToolUse.find((h: Record<string, unknown>) => h.matcher === "Bash");
+      expect(JSON.stringify(bashHook)).toContain("check --hook-input Bash");
+
+      for (const tool of ["Write", "Edit", "Read", "Bash"] as const) {
         const hook = preToolUse.find((h) => h.matcher === tool);
         expect(hook, `${tool} hook should be installed`).toBeDefined();
         const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
@@ -143,7 +150,8 @@ describe("setupCommand", () => {
       );
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const preToolUse = (settings.hooks as Record<string, unknown>).PreToolUse as unknown[];
-      for (const tool of ["Write", "Edit", "Read"] as const) {
+      expect(preToolUse).toHaveLength(4);
+      for (const tool of ["Write", "Edit", "Read", "Bash"] as const) {
         const toolHooks = preToolUse.filter(
           (h) => typeof h === "object" && h !== null && (h as Record<string, unknown>).matcher === tool
         );

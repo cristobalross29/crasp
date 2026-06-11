@@ -1,6 +1,6 @@
 # Crasp
 
-Local-first security layer for Claude Code. Intercepts every Write/Edit/Read operation via PreToolUse hooks, scans content for leaked secrets and policy violations, and records a persistent activity log. Also exposes an MCP server so Claude can self-check before acting.
+Local-first security layer for Claude Code. Intercepts every Write/Edit/Read/Bash operation via PreToolUse hooks, scans content for leaked secrets and policy violations, and records a persistent activity log. Also exposes an MCP server so Claude can self-check before acting.
 
 ## Commands
 
@@ -76,11 +76,27 @@ src/
 ### Hook check pipeline (the main feature)
 
 ```
-Claude Code fires PreToolUse for Write/Edit/Read
+Claude Code fires PreToolUse for Write/Edit/Read/Bash
   → crasp check --hook-input <tool>   (stdin: JSON payload)
       → runHookInputCheck()
-          1. Parse stdin JSON → { tool_input: { file_path, content/new_string } }
+          1. Parse stdin JSON
+             Write/Edit/Read → { tool_input: { file_path, content/new_string } }
+             Bash            → { tool_input: { command } }
           2. loadMergedPolicy()             # builtin + user crasp.policy.yml
+
+          ── Bash branch ──────────────────────────────────────────────────────
+          3. matchesBashException()         # command: regex in exceptions → log "exception", exit 0
+          4. checkBashCommand()             # heuristic rule engine:
+             ask      → permissionDecision:"ask" dialog, log "ask", exit 0
+             advisory → buffered (not emitted yet — scanContent runs first)
+             (no deny — Bash is always ask-only; user always decides)
+          5. scanContent(command)           # scan command text vs policy rules
+             match    → permissionDecision:"ask" (advisory prefix prepended if buffered),
+                        log "ask", exit 0
+             no match + advisory buffered → additionalContext emitted, log "advisory", exit 0
+             no match + no advisory → log "clean", exit 0
+
+          ── Write/Edit/Read branch ───────────────────────────────────────────
           3. matchesException()             # if path+op in exceptions → log "exception", exit 0
           4. checkSensitivePath()           # tier-based response:
              advisory  → additionalContext injected into Claude, continue
@@ -89,6 +105,8 @@ Claude Code fires PreToolUse for Write/Edit/Read
           5. scanContent()                  # Write/Edit only — scan content vs policy rules
              blocking match → permissionDecision:"deny", log "denied", exit 0
           6. All clear → log "clean" or "advisory", exit 0
+          ─────────────────────────────────────────────────────────────────────
+
       → appendHookLogEntry() → .crasp/events.ndjson (NDJSON, never throws)
 ```
 
@@ -162,6 +180,10 @@ Defined in `src/core/patterns/builtin.ts`. Always active, merged with the user's
 **Safe to commit:** `.claude/CLAUDE.md`, `.claude/skills/`, `scenarios/`, `src/`, `tests/`, `crasp.policy.yml`, `package.json`, `tsconfig.json`, `.github/`
 
 ## How to Extend
+
+### Add a new bash command rule
+1. Add a rule object to `BASH_COMMAND_RULES` in `src/core/scanner/bash-rules.ts`
+2. Test it in `tests/core/bash-rules.test.ts`
 
 ### Add a new builtin rule
 1. Add a rule object to the `rules` array in `src/core/patterns/builtin.ts`

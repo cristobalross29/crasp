@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { policyExceptionSchema } from "../../src/core/policy/schema.js";
 import type { PolicyException, Policy } from "../../src/types/index.js";
-import { matchesException } from "../../src/core/policy/exceptions.js";
+import { matchesException, matchesBashException } from "../../src/core/policy/exceptions.js";
+import { redactCommand } from "../../src/core/scanner/redact.js";
 
 describe("policyExceptionSchema", () => {
   it("parses a minimal exception with path only — ops defaults to ['any']", () => {
@@ -37,8 +38,12 @@ describe("policyExceptionSchema", () => {
     expect(() => policyExceptionSchema.parse({ path: "" })).toThrow();
   });
 
-  it("rejects missing path", () => {
+  it("rejects an exception with neither path nor command", () => {
     expect(() => policyExceptionSchema.parse({ ops: ["read"] })).toThrow();
+  });
+
+  it("rejects an empty command", () => {
+    expect(() => policyExceptionSchema.parse({ command: "", ops: ["bash"] })).toThrow();
   });
 
   it("rejects empty ops array", () => {
@@ -78,6 +83,24 @@ describe("PolicyException and Policy types", () => {
       exceptions: [{ path: ".env.local", ops: ["read"] }],
     };
     expect(policy.exceptions).toHaveLength(1);
+  });
+});
+
+describe("bash command exceptions schema", () => {
+  it("parses an exception with a command pattern and bash op", () => {
+    const parsed = policyExceptionSchema.parse({
+      command: "rm -rf node_modules",
+      ops: ["bash"],
+      reason: "routine cleanup",
+    });
+    expect(parsed.command).toBe("rm -rf node_modules");
+    expect(parsed.ops).toEqual(["bash"]);
+  });
+
+  it("still parses a path-only exception with no command", () => {
+    const parsed = policyExceptionSchema.parse({ path: ".env.local", ops: ["read"] });
+    expect(parsed.command).toBeUndefined();
+    expect(parsed.path).toBe(".env.local");
   });
 });
 
@@ -176,5 +199,61 @@ describe("matchesException", () => {
       { path: ".env.local", ops: ["any"] },
     ];
     expect(matchesException("/project/.env.local", "Read", exceptions)).toBe(true);
+  });
+
+  it("path-based exceptions do not fire for Bash calls (empty filePath)", () => {
+    expect(matchesException("", "Bash", [{ path: ".env", ops: ["bash"] }])).toBe(false);
+  });
+});
+
+describe("matchesBashException", () => {
+  const ex: PolicyException[] = [{ command: "rm -rf node_modules", ops: ["bash"] }];
+
+  it("matches a command against a bash exception regex", () => {
+    expect(matchesBashException("rm -rf node_modules", ex)).toBe(true);
+  });
+
+  it("does not match a different command", () => {
+    expect(matchesBashException("rm -rf /etc", ex)).toBe(false);
+  });
+
+  it("ignores exceptions with no command field", () => {
+    expect(matchesBashException("rm -rf x", [{ path: ".env", ops: ["any"] }])).toBe(false);
+  });
+
+  it("honours the 'any' op", () => {
+    expect(matchesBashException("ls", [{ command: "^ls$", ops: ["any"] }])).toBe(true);
+  });
+
+  it("treats an invalid regex as non-matching (fail closed)", () => {
+    expect(matchesBashException("anything", [{ command: "([", ops: ["bash"] }])).toBe(false);
+  });
+});
+
+describe("redactCommand", () => {
+  it("redacts an OpenAI-style key in a command", () => {
+    const out = redactCommand('curl -H "Authorization: Bearer sk-proj-ABCDEF1234567890abcdef"');
+    expect(out).not.toContain("sk-proj-ABCDEF1234567890abcdef");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a GitHub PAT", () => {
+    const out = redactCommand("git clone https://github_pat_11ABCDEFGHIJ1234567890abcdefgh@github.com/x/y");
+    expect(out).not.toContain("github_pat_11ABCDEFGHIJ1234567890abcdefgh");
+  });
+
+  it("leaves a clean command unchanged", () => {
+    expect(redactCommand("rm -rf build")).toBe("rm -rf build");
+  });
+
+  it("produces the same output on repeated calls (no lastIndex statefulness bug)", () => {
+    const cmd = 'curl -H "Authorization: Bearer sk-proj-ABCDEF1234567890abcdef"';
+    expect(redactCommand(cmd)).toBe(redactCommand(cmd));
+  });
+
+  it("does not redact kebab-case words that merely end in sk-", () => {
+    expect(redactCommand("pnpm test task-1234567890abcdef01234567")).toBe(
+      "pnpm test task-1234567890abcdef01234567"
+    );
   });
 });
