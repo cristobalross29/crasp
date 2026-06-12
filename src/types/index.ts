@@ -144,15 +144,18 @@ export interface RunReport {
   violations: Violation[];
 }
 
-export type HookLogOutcome = "clean" | "advisory" | "ask" | "denied" | "exception";
+export type HookLogOutcome = "clean" | "advisory" | "ask" | "denied" | "exception" | "inbound-flagged";
 export type HookLogTier = "advisory" | "high" | "critical";
+export type HookPhase = "pre" | "post";
 
 export interface HookLogEntry {
   ts: string;
-  tool: "Write" | "Edit" | "Read" | "Bash";
-  /** Holds the redacted command string when tool is "Bash". */
+  tool: "Write" | "Edit" | "Read" | "Bash" | "WebFetch" | "WebSearch";
+  /** Redacted command (Bash) or redacted tool target (file/URL/query marker) for inbound entries. */
   filePath: string;
   outcome: HookLogOutcome;
   tier?: HookLogTier;
   ruleId?: string;
+  /** Absent ⇒ "pre". "post" marks PostToolUse (inbound) entries. */
+  phase?: HookPhase;
 }

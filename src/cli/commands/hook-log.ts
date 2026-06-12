@@ -31,6 +31,7 @@ function icon(outcome: HookLogEntry["outcome"]): string {
     case "ask":       return "⚠";
     case "denied":    return "🛡";
     case "exception": return "⚪";
+    case "inbound-flagged": return "📥";
   }
 }
 
@@ -44,6 +45,8 @@ function outcomeLabel(entry: HookLogEntry): string {
       return chalk.blue("warned Claude about secrets");
     case "exception":
       return chalk.dim("bypassed (policy exception)");
+    case "inbound-flagged":
+      return chalk.magenta("flagged inbound content" + (entry.ruleId ? ` [${entry.ruleId}]` : ""));
     case "clean":
     default:
       return chalk.dim("clean");
