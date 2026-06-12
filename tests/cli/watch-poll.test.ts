@@ -67,18 +67,87 @@ describe("createPoller (E4)", () => {
     expect(h.render).toHaveBeenCalledTimes(2);
   });
 
-  it("debounce coalesces a burst of changes into one re-read+render", async () => {
+  it("trailing debounce flushes on a later tick with NO manual flush (E4)", async () => {
     const h = harness({ debounceMs: 100 });
     h.setStat(10, 100);
-    await h.poller.tick();              // read #1, schedules nothing new (first read immediate)
+    await h.poller.tick();              // read #1 (first observation, immediate)
+    expect(h.readHookLog).toHaveBeenCalledTimes(1);
+
+    // a change arrives — within the window the read is deferred, not served
+    h.setStat(11, 101);
+    h.advance(10);
+    await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(1); // still deferred
+
+    // a later tick crosses the window boundary; the trailing read must fire
+    // even though the signature has NOT changed this tick.
+    h.advance(120);
+    await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(2); // trailing flush fired exactly once
+
+    // and only once — a further tick past the window does not re-read.
+    h.advance(120);
+    await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(2);
+  });
+
+  it("a burst of rapid changes coalesces to exactly one extra read (E4)", async () => {
+    const h = harness({ debounceMs: 100 });
+    h.setStat(10, 100);
+    await h.poller.tick();              // read #1
     expect(h.readHookLog).toHaveBeenCalledTimes(1);
 
     // three rapid changes within the debounce window
-    h.setStat(11, 101); await h.poller.tick();
-    h.setStat(12, 102); await h.poller.tick();
-    h.setStat(13, 103); await h.poller.tick();
-    // within the window only ONE coalesced re-read fires
-    await h.poller.flushDebounce();
-    expect(h.readHookLog).toHaveBeenCalledTimes(2); // one coalesced read for the burst
+    h.setStat(11, 101); h.advance(5); await h.poller.tick();
+    h.setStat(12, 102); h.advance(5); await h.poller.tick();
+    h.setStat(13, 103); h.advance(5); await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(1); // all deferred so far
+
+    // crossing the window flushes the coalesced read exactly once
+    h.advance(120);
+    await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(2);
+
+    // a genuine later change still reads (after its own window)
+    h.setStat(14, 104); h.advance(5); await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(2); // deferred
+    h.advance(120); await h.poller.tick();
+    expect(h.readHookLog).toHaveBeenCalledTimes(3);
+  });
+
+  it("a steadily-growing file is never starved (E4)", async () => {
+    const h = harness({ debounceMs: 100 });
+    let size = 10;
+    h.setStat(size, size);
+    await h.poller.tick(); // read #1
+    expect(h.readHookLog).toHaveBeenCalledTimes(1);
+
+    // file grows on every tick; the trailing read must still fire periodically.
+    let reads = 1;
+    for (let i = 0; i < 30; i++) {
+      size += 1;
+      h.setStat(size, size);
+      h.advance(40); // 40ms ticks, window is 100ms
+      await h.poller.tick();
+      reads = h.readHookLog.mock.calls.length;
+    }
+    // 30 ticks * 40ms = 1200ms elapsed; with a 100ms window the trailing read
+    // should have fired multiple times — the file is not starved forever.
+    expect(reads).toBeGreaterThan(1);
+  });
+
+  it("unchanged signature → re-render cache with ZERO reads (E4)", async () => {
+    const h = harness({ debounceMs: 100 });
+    h.setStat(10, 100);
+    await h.poller.tick(); // read #1
+    expect(h.readHookLog).toHaveBeenCalledTimes(1);
+
+    // many ticks with no change and no pending read → pure clock refreshes
+    for (let i = 0; i < 5; i++) {
+      h.advance(200);
+      await h.poller.tick();
+    }
+    expect(h.readHookLog).toHaveBeenCalledTimes(1); // ZERO extra reads
+    expect(h.render).toHaveBeenCalledTimes(6);       // re-rendered each tick
   });
 });

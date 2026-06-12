@@ -16,8 +16,6 @@ export interface PollerDeps {
 export interface Poller {
   /** One poll iteration: stat → read-gate → (debounced) read → render. */
   tick: () => Promise<void>;
-  /** Force any pending debounced read to run now (test seam + teardown). */
-  flushDebounce: () => Promise<void>;
 }
 
 export function createPoller(deps: PollerDeps): Poller {
@@ -25,9 +23,15 @@ export function createPoller(deps: PollerDeps): Poller {
 
   let lastSig: string | undefined;
   let cache: HookLogEntry[] = [];
-  let pendingSince = 0; // timestamp (clock ms) of the first un-served change in the window
+  // The signature of a change we have observed but not yet served (trailing debounce).
+  let pendingSig: string | undefined;
+  let pendingSince = 0; // clock ms of the first un-served change in the window
 
-  async function read(): Promise<void> {
+  async function read(sig: string): Promise<void> {
+    // Commit the served signature only once the read actually fires.
+    lastSig = sig;
+    pendingSig = undefined;
+    pendingSince = 0;
     cache = await readHookLog();
     render(cache, clock());
   }
@@ -40,46 +44,41 @@ export function createPoller(deps: PollerDeps): Poller {
     } catch {
       // File vanished (.crasp removed) — surface the empty state and reset.
       lastSig = undefined;
+      pendingSig = undefined;
+      pendingSince = 0;
       cache = [];
       render(cache, clock());
       return;
     }
 
-    const firstObservation = lastSig === undefined;
-    const changed = sig !== lastSig;
-    lastSig = sig;
-
-    if (!changed) {
-      // Clock-only refresh: re-render the cache cheaply, NO file read (E4).
-      render(cache, clock());
-      return;
-    }
-
-    // The very first observation reads immediately — there is no prior frame to
-    // debounce against. Only subsequent rapid changes coalesce within the window.
-    if (debounceMs <= 0 || firstObservation) {
-      await read();
-      return;
-    }
-
-    // Trailing debounce: remember the window start; coalesce until it elapses.
+    const firstObservation = lastSig === undefined && pendingSig === undefined;
     const nowMs = clock().getTime();
-    if (pendingSince === 0) pendingSince = nowMs;
-    if (nowMs - pendingSince >= debounceMs) {
-      pendingSince = 0;
-      await read();
-    } else {
-      // still within the window — defer the read, but keep the status line live
-      render(cache, clock());
+
+    if (sig !== lastSig) {
+      // A change relative to what we last SERVED.
+      if (debounceMs <= 0 || firstObservation) {
+        // No prior frame to debounce against (or debouncing disabled) — read now.
+        await read(sig);
+        return;
+      }
+      // Trailing debounce: remember the latest pending signature; coalesce a
+      // burst by only starting the window on the FIRST un-served change.
+      if (pendingSig === undefined) pendingSince = nowMs;
+      pendingSig = sig;
     }
+
+    // On EVERY tick, if a debounced read is pending and the window has elapsed,
+    // flush it regardless of whether the signature changed this tick. This is
+    // what keeps a steadily-growing file from being starved.
+    if (pendingSig !== undefined && nowMs - pendingSince >= debounceMs) {
+      await read(pendingSig);
+      return;
+    }
+
+    // Otherwise a cheap clock-only refresh (no file read): either nothing
+    // changed, or a read is pending but still inside its window.
+    render(cache, clock());
   }
 
-  async function flushDebounce(): Promise<void> {
-    if (pendingSince !== 0) {
-      pendingSince = 0;
-      await read();
-    }
-  }
-
-  return { tick, flushDebounce };
+  return { tick };
 }
