@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Inbound content scanning via PostToolUse hooks (Read, Bash, WebFetch,
+  WebSearch). Tool results are scanned for indirect prompt-injection and leaked
+  secrets before they re-enter Claude's context. Findings surface as a
+  non-blocking `additionalContext` caution (PostToolUse has no approval dialog)
+  that lists only the triggered rule IDs and a count — matched content is never
+  echoed into context or the log. New `crasp check --hook-input <Tool> --post`
+  surface, new `inbound-flagged` hook-log outcome, and a `phase` field
+  distinguishing pre/post events. Input is normalized (NFKC, zero-width/bidi
+  stripped) and bounded before scanning; the inbound path fails open.
+
 ---
 
 ## [0.1.2] - 2026-06-11
