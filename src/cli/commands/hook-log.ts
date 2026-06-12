@@ -24,7 +24,7 @@ function formatTime(ts: string): string {
   return `${hh}:${mm}`;
 }
 
-function icon(outcome: HookLogEntry["outcome"]): string {
+export function icon(outcome: HookLogEntry["outcome"]): string {
   switch (outcome) {
     case "clean":     return "✓";
     case "advisory":  return "ℹ";
@@ -34,7 +34,7 @@ function icon(outcome: HookLogEntry["outcome"]): string {
   }
 }
 
-function outcomeLabel(entry: HookLogEntry): string {
+export function outcomeLabel(entry: HookLogEntry): string {
   switch (entry.outcome) {
     case "denied":
       return chalk.red("BLOCKED" + (entry.ruleId ? ` [${entry.ruleId}]` : ""));
@@ -50,7 +50,7 @@ function outcomeLabel(entry: HookLogEntry): string {
   }
 }
 
-function fileDisplay(filePath: string): string {
+export function fileDisplay(filePath: string): string {
   const segments = filePath.replace(/\\/g, "/").split("/").filter(Boolean);
   const display =
     segments.length >= 2
@@ -59,7 +59,7 @@ function fileDisplay(filePath: string): string {
   return display.padEnd(20);
 }
 
-function commandDisplay(command: string): string {
+export function commandDisplay(command: string): string {
   const oneLine = command.replace(/\s+/g, " ").trim();
   const truncated = oneLine.length > 20 ? [...oneLine].slice(0, 17).join("") + "..." : oneLine;
   return truncated.padEnd(20);
