@@ -14,6 +14,7 @@ import { statusCommand } from "./commands/status.js";
 import { validateCommand } from "./commands/validate.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { hookLogCommand } from "./commands/hook-log.js";
+import { watchCommand } from "./commands/watch.js";
 
 const program = new Command();
 
@@ -100,5 +101,13 @@ program
   .option("--json", "emit raw NDJSON lines to stdout")
   .option("--prune", "remove entries older than 90 days and exit")
   .action(hookLogCommand);
+
+program
+  .command("watch")
+  .description("live terminal dashboard of Crasp hook activity")
+  .option("--once", "render a single snapshot and exit (also the no-TTY behaviour)")
+  .option("--since <spec>", "only show activity since <spec> (e.g. 30m, 2h, 1d, or an ISO timestamp)")
+  .option("--interval <ms>", "poll interval in ms for the live view (default 250)")
+  .action(watchCommand);
 
 program.parse();
