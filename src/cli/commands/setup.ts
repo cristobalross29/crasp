@@ -142,6 +142,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
     chalk.dim(
       "\nWhat's now running (automatically, no extra commands needed):\n" +
         "  Hook guard  — every Write, Edit, Read, and Bash command Claude Code makes is intercepted\n" +
+        "  Inbound scan — web/file/command RESULTS are scanned for prompt injection before Claude reads them\n" +
         "  MCP server  — Claude Code will start it on its own via .mcp.json\n" +
         "  Git hook    — staged files are scanned before every commit\n" +
         "\nOptional next steps:\n" +
@@ -261,6 +262,22 @@ function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
   return isCraspHook(h, tool) && JSON.stringify(h).includes("--hook-input");
 }
 
+const INBOUND_HOOK_TOOLS = ["Read", "Bash", "WebFetch", "WebSearch"] as const;
+type InboundHookToolName = (typeof INBOUND_HOOK_TOOLS)[number];
+
+// BROAD detector (D10): treat ANY crasp PostToolUse hook for this matcher as a
+// crasp post hook — do NOT require it to contain "--post". This way a stale or
+// older-format crasp post hook is still removed before we reinstall, avoiding
+// duplicates. (The command we write always contains "--post".)
+function isCraspPostHook(h: unknown, tool: InboundHookToolName): boolean {
+  return (
+    typeof h === "object" &&
+    h !== null &&
+    (h as Record<string, unknown>).matcher === tool &&
+    JSON.stringify(h).includes("crasp")
+  );
+}
+
 async function ensureClaudeCodeHooks(root: string): Promise<void> {
   const claudeDir = path.join(root, ".claude");
   const settingsPath = path.join(claudeDir, "settings.json");
@@ -277,13 +294,17 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
 
   const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
+  const postToolUse = (hooks.PostToolUse as unknown[] | undefined) ?? [];
 
-  // If all four new-format hooks are already installed, nothing to do
+  // If all four new-format PRE hooks AND all four POST hooks are present, no-op.
   const allInstalled = HOOK_TOOLS.every((tool) =>
     preToolUse.some((h) => isNewFormatHook(h, tool))
   );
+  const allPostInstalled = INBOUND_HOOK_TOOLS.every((tool) =>
+    postToolUse.some((h) => isCraspPostHook(h, tool))
+  );
 
-  if (allInstalled) {
+  if (allInstalled && allPostInstalled) {
     console.log(chalk.yellow("Skipped .claude/settings.json hooks (already installed)"));
     return;
   }
@@ -303,11 +324,27 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   }
 
   hooks.PreToolUse = filteredHooks;
+
+  // PostToolUse (inbound scanning) — independent of the PreToolUse block above.
+  if (!allPostInstalled) {
+    // Broad cleanup: drop ANY crasp post hook for these matchers, then reinstall.
+    const filteredPost = postToolUse.filter(
+      (h) => !INBOUND_HOOK_TOOLS.some((tool) => isCraspPostHook(h, tool))
+    );
+    for (const tool of INBOUND_HOOK_TOOLS) {
+      filteredPost.push({
+        matcher: tool,
+        hooks: [{ type: "command", command: `${bin} check --hook-input ${tool} --post` }],
+      });
+    }
+    hooks.PostToolUse = filteredPost;
+  }
+
   settings.hooks = hooks;
 
   await mkdir(claudeDir, { recursive: true });
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Write, Edit, Read, Bash)"));
+  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Pre: Write, Edit, Read, Bash; Post: Read, Bash, WebFetch, WebSearch)"));
 }
 
 // ── CLAUDE.md documentation block ────────────────────────────────────────────
@@ -322,6 +359,7 @@ Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, Read
 Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
 Bash commands are screened for destructive actions and secret exfiltration before they run.
 Content written to files is also scanned for leaked secrets and policy violations.
+Content returned by Read, web fetches/searches, and Bash is scanned for injected instructions and leaked secrets before it re-enters context (a non-blocking caution; PostToolUse has no approval dialog).
 Policy rules live in \`crasp.policy.yml\`. Run \`crasp status\` to verify configuration.
 ${CLAUDE_MD_SENTINEL_END}`;
 

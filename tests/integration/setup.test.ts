@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -94,6 +94,91 @@ describe("setupCommand", () => {
         expect(hookDef.command as string).toContain("--hook-input");
         expect(hookDef.command as string).toContain(tool);
       }
+    } finally {
+      process.chdir(originalCwd);
+      await rm(freshRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("writes PostToolUse hooks for Read, Bash, WebFetch, and WebSearch", async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-hook-test-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(freshRoot);
+    try {
+      await setupCommand();
+      const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      const hooks = settings.hooks as Record<string, unknown>;
+      const postToolUse = hooks.PostToolUse as Array<Record<string, unknown>>;
+      expect(Array.isArray(postToolUse)).toBe(true);
+      expect(postToolUse).toHaveLength(4);
+
+      const matchers = postToolUse.map((h) => h.matcher);
+      expect(matchers).toEqual(expect.arrayContaining(["Read", "Bash", "WebFetch", "WebSearch"]));
+
+      for (const tool of ["Read", "Bash", "WebFetch", "WebSearch"] as const) {
+        const hook = postToolUse.find((h) => h.matcher === tool);
+        expect(hook, `${tool} post hook`).toBeDefined();
+        const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
+        expect(hookDef.command as string).toContain("--hook-input");
+        expect(hookDef.command as string).toContain(tool);
+        expect(hookDef.command as string).toContain("--post");
+      }
+    } finally {
+      process.chdir(originalCwd);
+      await rm(freshRoot, { recursive: true, force: true });
+    }
+  });
+
+  // D10 regression: an EXISTING user whose settings.json already has all PreToolUse
+  // hooks must still get PostToolUse hooks installed. The old `if (allInstalled)
+  // return` skipped them. Simulate by running setup twice (first run installs Pre;
+  // the combined guard must not short-circuit before Post is present).
+  it("installs PostToolUse hooks even when PreToolUse hooks already exist (run twice)", async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-idempotent-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(freshRoot);
+    try {
+      await setupCommand();
+      await setupCommand(); // second run must be a no-op that still leaves Post hooks present
+      const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      const hooks = settings.hooks as Record<string, unknown>;
+      const postToolUse = hooks.PostToolUse as Array<Record<string, unknown>>;
+      expect(Array.isArray(postToolUse)).toBe(true);
+      // Exactly four — no duplication on the second run.
+      expect(postToolUse).toHaveLength(4);
+      const matchers = postToolUse.map((h) => h.matcher);
+      expect(matchers).toEqual(expect.arrayContaining(["Read", "Bash", "WebFetch", "WebSearch"]));
+    } finally {
+      process.chdir(originalCwd);
+      await rm(freshRoot, { recursive: true, force: true });
+    }
+  });
+
+  // D10 regression: seed a settings.json with ONLY PreToolUse crasp hooks (the
+  // shape an existing F1 user has), then run setup — Post hooks must appear.
+  it("adds PostToolUse hooks to a settings.json that has only PreToolUse hooks", async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-seed-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(freshRoot);
+    try {
+      await mkdir(path.join(freshRoot, ".claude"), { recursive: true });
+      const seeded = {
+        hooks: {
+          PreToolUse: ["Write", "Edit", "Read", "Bash"].map((tool) => ({
+            matcher: tool,
+            hooks: [{ type: "command", command: `crasp check --hook-input ${tool}` }],
+          })),
+        },
+      };
+      await writeFile(path.join(freshRoot, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
+      await setupCommand();
+      const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      const hooks = settings.hooks as Record<string, unknown>;
+      const postToolUse = (hooks.PostToolUse as Array<Record<string, unknown>>) ?? [];
+      expect(postToolUse).toHaveLength(4);
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
