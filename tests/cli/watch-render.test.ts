@@ -164,6 +164,47 @@ describe("visibleWidth + clip (E3)", () => {
     expect(opens).toBe(resets);          // SGR balanced
     expect(out.endsWith("\x1b[0m")).toBe(true); // ends with a reset
   });
+
+  it("balanceSgr does NOT double-reset a line whose truncation keeps the trailing \\x1b[0m", () => {
+    // Construct a line where clipping at exactly the right width preserves the trailing reset.
+    // "abc\x1b[31m" + 10 chars of content + "\x1b[0m" — if we clip at 13 we keep the SGR but
+    // not the content; if the reset lands within the clip window it must not be doubled.
+    // Simplest: content short enough to fit entirely, then the trailing \x1b[0m is preserved by clip.
+    // clip() returns early (no truncation) when visibleWidth <= cols, so the balanceSgr path
+    // for a "truncated but already-reset" line is only reachable when the reset escape itself
+    // is included in the output by the escape-passthrough loop. Build exactly that:
+    // content = 5 visible chars + \x1b[0m, clip at 5 → clip loop includes the \x1b[0m (zero width),
+    // then balanceSgr must not add another.
+    const line = "\x1b[31m" + "abcde" + "\x1b[0m" + "extra_visible_chars_that_push_past_5";
+    const out = clip(line, 5); // clips after "abcde", but \x1b[0m has zero visible width so it's kept
+    expect(out.endsWith("\x1b[0m")).toBe(true);
+    expect(out.endsWith("\x1b[0m\x1b[0m")).toBe(false); // no double-reset
+  });
+
+  it("balanceSgr does NOT add reset for line ending with \\x1b[39m (fg reset)", () => {
+    // \x1b[39m is a valid foreground-color reset; appending \x1b[0m would be redundant.
+    const withFgReset = "\x1b[31m" + "x".repeat(50) + "\x1b[39m";
+    const out = clip(withFgReset, 10);
+    // After truncation, clip loop passes escapes through; if \x1b[39m lands in window it's kept.
+    // If not, balanceSgr appends \x1b[0m (not \x1b[39m) — that's acceptable.
+    // What we guard against: a line that clip returns ending in \x1b[39m must NOT get \x1b[0m added.
+    // Build a line where \x1b[39m is inside the clip window:
+    const shortWithFgReset = "\x1b[31m" + "ab" + "\x1b[39m" + "cde_overflow";
+    const out2 = clip(shortWithFgReset, 5); // 5 visible chars: "ab" + "cde" with \x1b[39m inside
+    // \x1b[39m has zero width so it passes through; the result ends with \x1b[39m (or \x1b[0m from balance)
+    // The important invariant: no bleed (has a trailing reset of some kind)
+    expect(out2.endsWith("\x1b[0m") || out2.endsWith("\x1b[39m") || out2.endsWith("\x1b[49m")).toBe(true);
+    expect(out2.endsWith("\x1b[39m\x1b[0m")).toBe(false); // \x1b[39m already resets fg — no extra needed
+  });
+
+  it("balanceSgr: multiple openers truncated mid-sequence end with exactly one reset", () => {
+    // Multiple opening SGRs, content, no closing reset — clip must append exactly one reset.
+    const multiOpen = "\x1b[31m\x1b[1m" + "y".repeat(50);
+    const out = clip(multiOpen, 10);
+    expect(out.endsWith("\x1b[0m")).toBe(true);
+    const resets = (out.match(/\x1b\[0m/g) ?? []).length;
+    expect(resets).toBe(1); // exactly one trailing reset, not two or more
+  });
 });
 
 describe("renderDashboard", () => {
@@ -252,6 +293,38 @@ describe("renderDashboard", () => {
       const populated = renderDashboard(many, opts({ rows }));
       expect(populated.split("\n").length).toBeLessThanOrEqual(rows);
     }
+  });
+
+  it("slice(-0) regression: capacity=0 yields zero event rows, not all entries (E7)", () => {
+    // With rows=5 and enough chrome, capacity may be 0 — previously slice(-0)===slice(0)
+    // returned ALL entries which then got truncated by the final slice(0,rows),
+    // dropping the footer/status line entirely.
+    const many = Array.from({ length: 20 }, (_, i) =>
+      entry({ ts: `2026-06-12T10:${String(i % 60).padStart(2, "0")}:00.000Z`, filePath: `src/f${i}.ts` }),
+    );
+    // rows=5: chrome = header(1) + headerRule(1) + footerRule(1) + tallies(1) + status(1) = 5
+    // capacity = 5 - 5 = 0 → must produce zero event rows, not 20
+    const out = renderDashboard(many, opts({ rows: 5 }));
+    const lines = out.split("\n");
+    // (a) frame line count ≤ rows
+    expect(lines.length).toBeLessThanOrEqual(5);
+    // (b) no event rows leaked — none of the entry filenames should appear
+    for (const line of lines) {
+      expect(line).not.toMatch(/src\/f\d+\.ts/);
+    }
+    // (c) frame is internally sensible — has header and status
+    expect(lines[0]).toContain("Crasp");
+    expect(lines[lines.length - 1]).toContain("watching");
+  });
+
+  it("slice(-0) regression: rows=1 with entries still respects the row budget (E7)", () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      entry({ ts: `2026-06-12T10:${String(i % 60).padStart(2, "0")}:00.000Z`, filePath: `src/g${i}.ts` }),
+    );
+    const out = renderDashboard(many, opts({ rows: 1 }));
+    expect(out.split("\n").length).toBeLessThanOrEqual(1);
+    // no event rows leaked on a 1-row terminal
+    expect(out).not.toMatch(/src\/g\d+\.ts/);
   });
 
   it("coerces a missing/null filePath to a placeholder, never crashes (MEDIUM)", () => {

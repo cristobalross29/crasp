@@ -129,10 +129,10 @@ export function clip(line: string, cols: number): string {
   return balanceSgr(out);
 }
 
-/** Append a reset if the line opens an SGR sequence but doesn't end with one. */
+/** Append a reset if the line opens an SGR sequence but doesn't already end with one. */
 function balanceSgr(line: string): string {
   if (!line.includes("\x1b[")) return line;
-  if (line.endsWith(RESET)) return line;
+  if (line.endsWith("\x1b[0m") || line.endsWith("\x1b[39m") || line.endsWith("\x1b[49m")) return line;
   return line + RESET;
 }
 
@@ -247,7 +247,7 @@ export function renderDashboard(entries: HookLogEntry[], opts: DashboardOptions)
     ].slice(0, capacity);
     lines.push(...body);
   } else {
-    const shown = entries.slice(-Math.max(0, capacity));
+    const shown = capacity > 0 ? entries.slice(-capacity) : [];
     for (const e of shown) lines.push(eventLine(e));
   }
   if (spacers) lines.push("");
