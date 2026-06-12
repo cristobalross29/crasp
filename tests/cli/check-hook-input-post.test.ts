@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -151,6 +151,46 @@ describe("check --hook-input --post (inbound scanning)", () => {
     });
     expect(status).toBe(0);
     expect(stdout.trim()).toBe("");
+  });
+
+  // ── MED 5: the logged target must be redacted for colon-form + bearer secrets.
+  describe("logged target redaction (F2 log path)", () => {
+    let tmp: string | null = null;
+    afterEach(async () => {
+      if (tmp) await rm(tmp, { recursive: true, force: true });
+      tmp = null;
+    });
+
+    it("redacts a colon-form secret in a WebSearch query target", async () => {
+      tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-post-redact-"));
+      runPost(
+        "WebSearch",
+        {
+          tool_name: "WebSearch",
+          tool_input: { query: "lookup client_secret: superSecretValue1234567890" },
+          tool_response: "benign results, nothing flagged here",
+        },
+        tmp
+      );
+      const log = await readFile(path.join(tmp, ".crasp", "events.ndjson"), "utf8");
+      expect(log).not.toContain("superSecretValue1234567890");
+      expect(log).toContain("REDACTED");
+    });
+
+    it("redacts a bearer token in a WebFetch URL target", async () => {
+      tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-post-redact-bearer-"));
+      runPost(
+        "WebFetch",
+        {
+          tool_name: "WebFetch",
+          tool_input: { url: "https://api.example.com/x?h=bearer abcDEF123456_token" },
+          tool_response: "benign body, nothing flagged",
+        },
+        tmp
+      );
+      const log = await readFile(path.join(tmp, ".crasp", "events.ndjson"), "utf8");
+      expect(log).not.toContain("abcDEF123456_token");
+    });
   });
 
   // ── D3 fail-open: a malformed user-policy regex makes scanContent's
