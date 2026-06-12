@@ -127,6 +127,17 @@ export function redactCommand(command: string): string {
       `${prefix}${redactValue(password)}`
   );
 
+  // LOW/MED 3: Bearer tokens BEFORE the assignment/colon patterns. Otherwise an
+  // assignment like `token=bearer ABC…` is consumed by the env/colon pattern as
+  // `token=[REDACTED]` (value="bearer", stops at the space) and the real token
+  // leaks. Redacting bearer first turns it into `token=bearer [REDACTED]…`; the
+  // later assignment pattern then sees the already-redacted form.
+  out = out.replace(
+    BEARER_TOKEN_RE,
+    (whole: string, token: string) =>
+      `${whole.slice(0, whole.length - token.length)}${redactValue(token)}`
+  );
+
   // Secret-named env assignments — two bounded patterns, each linear.
   const envReplacer = (_: string, name: string, value: string): string => {
     const stripped = value.replace(/^["']|["']$/g, "");
@@ -142,13 +153,6 @@ export function redactCommand(command: string): string {
       const sep = whole.slice(name.length, whole.length - value.length);
       return `${name}${sep}${redactValue(value)}`;
     }
-  );
-
-  // Bearer tokens — keep the "bearer " literal, redact the token.
-  out = out.replace(
-    BEARER_TOKEN_RE,
-    (whole: string, token: string) =>
-      `${whole.slice(0, whole.length - token.length)}${redactValue(token)}`
   );
 
   return out;

@@ -162,6 +162,42 @@ describe("redactCommand", () => {
     expect(redactCommand("the bearer of bad news")).toBe("the bearer of bad news");
   });
 
+  // LOW/MED 3: a `bearer <token>` preceded by an `=`/colon assignment must NOT
+  // leak — the assignment pattern used to consume the word "bearer" as the value
+  // (stopping at the space), so the real token escaped. Bearer redaction now runs
+  // first.
+  it("redacts a bearer token preceded by an = assignment (token=bearer …)", () => {
+    const out = redactCommand("token=bearer ABCDEF1234567890");
+    expect(out).not.toContain("ABCDEF1234567890");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a bearer token preceded by auth= assignment", () => {
+    const out = redactCommand("auth=bearer XYZ12345");
+    expect(out).not.toContain("XYZ12345");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts an authorization: bearer header form", () => {
+    const out = redactCommand("authorization: bearer ABCDEFGH12345678");
+    expect(out).not.toContain("ABCDEFGH12345678");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a plain bearer token", () => {
+    const out = redactCommand("bearer PlainTokenValue123456");
+    expect(out).not.toContain("PlainTokenValue123456");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("does not mangle 'the-bearer-of-bad-news'", () => {
+    expect(redactCommand("the-bearer-of-bad-news")).toBe("the-bearer-of-bad-news");
+  });
+
+  it("does not mangle a too-short bearer token (under 8 chars)", () => {
+    expect(redactCommand("bearer x")).toBe("bearer x");
+  });
+
   // Idempotency
   it("is idempotent on a curl -u case", () => {
     const cmd = "curl -u alice:SuperSecret123 https://api.example.com";

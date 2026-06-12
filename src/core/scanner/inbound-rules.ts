@@ -62,8 +62,16 @@ export function extractInboundText(toolResponse: unknown): string {
       // found (HIGH 4): an injection in metadata.title must still be scanned.
       // String values go in directly; nested objects/arrays recurse. Non-string
       // scalars are ignored. Depth cap + running budget still bound the work.
-      for (const v of Object.values(node as Record<string, unknown>)) {
+      //
+      // MED 1: iterate keys with `for..in` and check the budget BEFORE each value
+      // so a node with hundreds of thousands of keys stops early WITHOUT
+      // materializing an Object.values array up front. Walk values only, never
+      // keys (avoid structural-key false positives).
+      const obj = node as Record<string, unknown>;
+      for (const key in obj) {
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         if (total >= INBOUND_MAX_CHARS) return;
+        const v = obj[key];
         if (typeof v === "string") push(v);
         else if (v !== null && typeof v === "object") walk(v, depth + 1);
       }
@@ -90,7 +98,9 @@ export function normalizeInbound(text: string): string {
   return text.replace(ZERO_WIDTH_AND_BIDI, "").normalize("NFKC");
 }
 
-const URL_RE = /https?:\/\/\S+/i;
+// Bounded quantifier (LOW 4): \S{1,2048} keeps this within the bounded-quantifier
+// invariant — a multi-hundred-KB "URL" flood cannot drive a long unbounded scan.
+const URL_RE = /https?:\/\/\S{1,2048}/i;
 export function containsUrl(text: string): boolean {
   return URL_RE.test(text);
 }

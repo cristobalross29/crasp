@@ -286,7 +286,16 @@ function isInstalledPostHook(h: unknown, tool: InboundHookToolName): boolean {
   if (typeof h !== "object" || h === null) return false;
   if ((h as Record<string, unknown>).matcher !== tool) return false;
   const s = JSON.stringify(h);
-  return s.includes("crasp") && s.includes(`--hook-input ${tool}`) && s.includes("--post");
+  // MED 2(a): match a real `--post` flag token, not a substring — `s.includes
+  // ("--post")` also matches `--postpone`/`--postfix`.
+  return s.includes("crasp") && s.includes(`--hook-input ${tool}`) && hasPostFlag(s);
+}
+
+// A real `--post` flag token (followed by whitespace or end), not a prefix of a
+// longer flag like `--postpone`. The serialized form embeds the command as a JSON
+// string, so a trailing `"` also terminates the token.
+function hasPostFlag(commandString: string): boolean {
+  return /(?:^|\s)--post(?:\s|"|$)/.test(commandString);
 }
 
 async function ensureClaudeCodeHooks(root: string): Promise<void> {
@@ -307,15 +316,58 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
   const postToolUse = (hooks.PostToolUse as unknown[] | undefined) ?? [];
 
-  // If all four new-format PRE hooks AND all four POST hooks are present, no-op.
+  const bin = resolveCraspBin();
+  const canonicalPostCommand = (tool: InboundHookToolName): string =>
+    `${bin} check --hook-input ${tool} --post`;
+  const isCanonicalPostHook = (h: unknown, tool: InboundHookToolName): boolean =>
+    typeof h === "object" &&
+    h !== null &&
+    (h as Record<string, unknown>).matcher === tool &&
+    JSON.stringify(h).includes(canonicalPostCommand(tool));
+
+  // MED 2(b): ALWAYS run the broad post-hook cleanup BEFORE the early-return gate.
+  // Drop every crasp PostToolUse hook for these matchers that is NOT the canonical
+  // current `--post` hook (stale/old-format), and dedupe canonical hooks so each
+  // tool keeps exactly one. Third-party (non-crasp) hooks are preserved untouched.
+  // Without this, a tool that has BOTH a proper `--post` hook and a stale crasp
+  // post hook satisfies `allPostInstalled`, the gate returns early, and the
+  // duplicate survives.
+  const seenCanonical = new Set<InboundHookToolName>();
+  const cleanedPost = postToolUse.filter((h) => {
+    const tool = INBOUND_HOOK_TOOLS.find((t) => isCraspPostHook(h, t));
+    if (tool === undefined) return true; // not a crasp post hook → preserve
+    if (isCanonicalPostHook(h, tool)) {
+      if (seenCanonical.has(tool)) return false; // duplicate canonical → drop
+      seenCanonical.add(tool);
+      return true;
+    }
+    return false; // stale crasp post hook (old format / no --post) → drop
+  });
+
+  // Compute install state on the CLEANED set.
   const allInstalled = HOOK_TOOLS.every((tool) =>
     preToolUse.some((h) => isNewFormatHook(h, tool))
   );
   const allPostInstalled = INBOUND_HOOK_TOOLS.every((tool) =>
-    postToolUse.some((h) => isInstalledPostHook(h, tool))
+    cleanedPost.some((h) => isInstalledPostHook(h, tool))
   );
 
-  if (allInstalled && allPostInstalled) {
+  // Append any missing canonical post hooks.
+  for (const tool of INBOUND_HOOK_TOOLS) {
+    if (!cleanedPost.some((h) => isInstalledPostHook(h, tool))) {
+      cleanedPost.push({
+        matcher: tool,
+        hooks: [{ type: "command", command: canonicalPostCommand(tool) }],
+      });
+    }
+  }
+
+  const postChanged =
+    cleanedPost.length !== postToolUse.length ||
+    cleanedPost.some((h, i) => h !== postToolUse[i]);
+
+  // No-op only if PRE is fully installed AND POST needed no changes.
+  if (allInstalled && allPostInstalled && !postChanged) {
     console.log(chalk.yellow("Skipped .claude/settings.json hooks (already installed)"));
     return;
   }
@@ -325,8 +377,6 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
     (h) => !HOOK_TOOLS.some((tool) => isCraspHook(h, tool))
   );
 
-  const bin = resolveCraspBin();
-
   for (const tool of HOOK_TOOLS) {
     filteredHooks.push({
       matcher: tool,
@@ -335,21 +385,7 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   }
 
   hooks.PreToolUse = filteredHooks;
-
-  // PostToolUse (inbound scanning) — independent of the PreToolUse block above.
-  if (!allPostInstalled) {
-    // Broad cleanup: drop ANY crasp post hook for these matchers, then reinstall.
-    const filteredPost = postToolUse.filter(
-      (h) => !INBOUND_HOOK_TOOLS.some((tool) => isCraspPostHook(h, tool))
-    );
-    for (const tool of INBOUND_HOOK_TOOLS) {
-      filteredPost.push({
-        matcher: tool,
-        hooks: [{ type: "command", command: `${bin} check --hook-input ${tool} --post` }],
-      });
-    }
-    hooks.PostToolUse = filteredPost;
-  }
+  hooks.PostToolUse = cleanedPost;
 
   settings.hooks = hooks;
 
