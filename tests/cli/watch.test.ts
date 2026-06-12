@@ -119,7 +119,7 @@ describe("crasp watch", () => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-watch-badsince-"));
     try {
       await seed(tmp, [entryLine({ outcome: "clean" })]);
-      for (const bad of ["30min", "garbage", "0m"]) {
+      for (const bad of ["30min", "garbage", "0m", "999999999d"]) {
         const r = run(tmp, ["--once", "--since", bad]);
         expect(r.status).not.toBe(0);
         expect(r.stderr).toContain(`invalid --since: ${bad}`);

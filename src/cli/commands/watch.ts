@@ -32,7 +32,7 @@ function frameOpts(watchPath: string, color: boolean): DashboardOptions {
 }
 
 /** Explicit interval parse: warn + fall back to default, floored at 50ms (E9). */
-function resolveInterval(raw: string | undefined): number {
+export function resolveInterval(raw: string | undefined): number {
   if (raw === undefined) return DEFAULT_INTERVAL;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) {
@@ -40,6 +40,42 @@ function resolveInterval(raw: string | undefined): number {
     return DEFAULT_INTERVAL;
   }
   return Math.max(MIN_INTERVAL, n);
+}
+
+/**
+ * Wire crash-safe SYNCHRONOUS teardown (E5) and register it on every exit path.
+ * Returns the idempotent cleanup: the first call clears the timer and restores
+ * the terminal; subsequent calls (e.g. SIGINT then "exit") are no-ops.
+ */
+export function wireTeardown(getTimer: () => NodeJS.Timeout | undefined): () => void {
+  let cleaned = false;
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
+    const timer = getTimer();
+    if (timer) clearInterval(timer);
+    try {
+      writeSync(1, SHOW_CURSOR + LEAVE_ALT); // bytes flush during exit
+    } catch {
+      // nothing else we can do during teardown
+    }
+  };
+
+  process.on("exit", cleanup);
+  process.on("SIGINT", () => { cleanup(); process.exit(0); });
+  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+  process.on("uncaughtException", (err) => {
+    cleanup();
+    process.stderr.write(`crasp watch: ${err.message}\n`);
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    cleanup();
+    process.stderr.write(`crasp watch: ${String(reason)}\n`);
+    process.exit(1);
+  });
+
+  return cleanup;
 }
 
 export async function watchCommand(options: WatchOptions = {}): Promise<void> {
@@ -73,19 +109,9 @@ export async function watchCommand(options: WatchOptions = {}): Promise<void> {
   // ── TTY live loop ───────────────────────────────────────────────────────────
   const intervalMs = resolveInterval(options.interval);
   let timer: NodeJS.Timeout | undefined;
-  let cleaned = false;
 
-  // Crash-safe SYNCHRONOUS teardown (E5): writeSync so bytes flush during exit.
-  const cleanup = (): void => {
-    if (cleaned) return;
-    cleaned = true;
-    if (timer) clearInterval(timer);
-    try {
-      writeSync(1, SHOW_CURSOR + LEAVE_ALT);
-    } catch {
-      // nothing else we can do during teardown
-    }
-  };
+  // Register crash-safe, idempotent teardown on every exit path (E5).
+  const cleanup = wireTeardown(() => timer);
 
   const render = (entries: HookLogEntry[], now: Date): void => {
     const opts = frameOpts(displayPath, true);
@@ -111,21 +137,8 @@ export async function watchCommand(options: WatchOptions = {}): Promise<void> {
     }
   };
 
-  // Enter alt-screen + hide cursor, register teardown on EVERY exit path (E5).
+  // Enter alt-screen + hide cursor (teardown already registered via wireTeardown).
   process.stdout.write(ENTER_ALT + HIDE_CURSOR);
-  process.on("exit", cleanup);
-  process.on("SIGINT", () => { cleanup(); process.exit(0); });
-  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-  process.on("uncaughtException", (err) => {
-    cleanup();
-    process.stderr.write(`crasp watch: ${err.message}\n`);
-    process.exit(1);
-  });
-  process.on("unhandledRejection", (reason) => {
-    cleanup();
-    process.stderr.write(`crasp watch: ${String(reason)}\n`);
-    process.exit(1);
-  });
 
   await draw();
   timer = setInterval(() => { void draw(); }, intervalMs);

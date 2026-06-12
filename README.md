@@ -145,8 +145,11 @@ watching · Ctrl-C to exit                      updated 14:05:11
   invocation, e.g. CI) also prints one snapshot and exits, with a notice on stderr.
 - `--since <spec>` scopes the view to a session. `<spec>` is a positive relative
   window — `Ns`, `Nm`, `Nh`, or `Nd` (e.g. `30m`, `2h`, `1d`) — or a strict ISO-8601
-  timestamp. Anything else (`30min`, `garbage`, `0m`) is rejected with an error and a
-  non-zero exit; it never silently shows everything.
+  timestamp. An offset-less ISO timestamp (e.g. `2026-06-12T10:00`) is interpreted as
+  UTC, matching the dashboard's UTC clock, so the window is identical on every host.
+  Anything else (`30min`, `garbage`, `0m`, or a duration so large it overflows the
+  date range like `999999999d`) is rejected with an error and a non-zero exit; it never
+  silently shows everything.
 - `--interval <ms>` sets the live poll cadence (default 250ms, floored at 50ms). A
   bad value warns on stderr and falls back to the default.
 - Times are rendered in UTC for deterministic, host-independent output.
