@@ -31,6 +31,9 @@ const UNIT_MS: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 8
 // Strict ISO-8601: YYYY-MM-DD, optional T time, optional fractional seconds, optional Z/offset.
 const ISO =
   /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+// An ISO datetime (has a T time component) that lacks an explicit timezone
+// designator (Z or ±HH:MM). Date-only strings are already UTC under Date.parse.
+const ISO_NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/;
 
 /**
  * Returns:
@@ -46,11 +49,18 @@ export function parseSince(spec: string | undefined, now: Date): Date | undefine
   if (rel) {
     const n = Number(rel[1]);
     if (n <= 0) return INVALID_SINCE; // non-positive window is a mistake (E6)
-    return new Date(now.getTime() - n * UNIT_MS[rel[2]]);
+    const d = new Date(now.getTime() - n * UNIT_MS[rel[2]]);
+    // A huge duration (e.g. 999999999d) overflows the Date range → NaN.
+    if (Number.isNaN(d.getTime())) return INVALID_SINCE;
+    return d;
   }
 
   if (ISO.test(s)) {
-    const ms = Date.parse(s);
+    // Offset-less ISO datetime (e.g. 2026-06-12T10:00) is parsed as UTC, not
+    // host-local, so the --since window is consistent across hosts and matches
+    // the UTC semantics used by the renderer (fmtTime / todayCount).
+    const normalized = ISO_NAIVE_DATETIME.test(s) ? `${s}Z` : s;
+    const ms = Date.parse(normalized);
     if (!Number.isNaN(ms)) return new Date(ms);
   }
 
@@ -69,8 +79,12 @@ export interface DashboardOptions {
 
 const ANSI = /\x1b\[[0-9;]*m/g;
 
-// Glyphs we emit that occupy two terminal columns (the icon set + any wide chars).
-const WIDE = new Set(["🛡", "⚪", "ℹ"]); // ℹ renders wide in most terminals; treat as 2 for safety
+// Glyphs we emit that occupy two terminal columns (the icon set + any wide
+// chars). ℹ and ⚠ are the same Unicode emoji-symbol class and render wide in
+// most terminals; treat them as 2 for safety. ✓ renders narrow (width 1).
+const WIDE = new Set(["🛡", "⚪", "ℹ", "⚠"]);
+
+const RESET = "\x1b[0m";
 
 export function fmtTime(date: Date, withSeconds = false): string {
   if (Number.isNaN(date.getTime())) return "--:--"; // bad/empty ts survives readHookLog (E8)
@@ -88,7 +102,13 @@ export function visibleWidth(str: string): number {
   return w;
 }
 
-/** Truncate to `cols` visible columns, never cutting through an ANSI escape. */
+/**
+ * Truncate to `cols` visible columns, never cutting through an ANSI escape.
+ * If the clip falls after an opening SGR but before its reset, the reset is
+ * lost and color bleeds into following lines / the shell prompt — so we
+ * re-balance by appending a reset when the clipped line opens color and does
+ * not already end with one (E3).
+ */
 export function clip(line: string, cols: number): string {
   if (visibleWidth(line) <= cols) return line;
   let w = 0;
@@ -106,7 +126,14 @@ export function clip(line: string, cols: number): string {
     w += cw;
     i += cp.length;
   }
-  return out;
+  return balanceSgr(out);
+}
+
+/** Append a reset if the line opens an SGR sequence but doesn't end with one. */
+function balanceSgr(line: string): string {
+  if (!line.includes("\x1b[")) return line;
+  if (line.endsWith(RESET)) return line;
+  return line + RESET;
 }
 
 const NEUTRAL_ICON = "·";
@@ -121,12 +148,8 @@ function safeLabel(entry: HookLogEntry): string {
   return known.includes(entry.outcome) ? outcomeLabel(entry) : entry.outcome; // E8
 }
 
-// ── chrome line counts — MUST match the lines actually pushed below (E7) ───────
-// Header block: title line + rule line.
-const HEADER_LINES = 2;
-// Footer block: rule line + tallies line + status line.
-const FOOTER_LINES = 3;
-// Two blank spacer lines bracket the body (one above, one below).
+// Two blank spacer lines bracket the body (one above, one below) on terminals
+// tall enough to afford them (E7).
 const SPACER_LINES = 2;
 
 function rule(cols: number): string {
@@ -142,11 +165,31 @@ function todayCount(entries: HookLogEntry[], now: Date): number {
   }).length;
 }
 
+// Visible width of the icon column. Icons are 1 or 2 cells wide; pad every icon
+// to a fixed 2-cell slot so all later columns share the same origin regardless
+// of glyph width (E3 — no ragged columns).
+const ICON_SLOT = 2;
+const PATH_COL = 20; // visible width of the path/command column
+
+/** Pad an icon to ICON_SLOT visible cells (a wide glyph gets no extra space). */
+function iconSlot(ic: string): string {
+  return ic + " ".repeat(Math.max(0, ICON_SLOT - visibleWidth(ic)));
+}
+
+/** Clip a plain (no-ANSI) field to a fixed visible width, then pad it out. */
+function fixedField(field: string, width: number): string {
+  const clipped = visibleWidth(field) > width ? clip(field, width) : field;
+  return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
+}
+
 function eventLine(e: HookLogEntry): string {
+  // A JSON-valid line may omit filePath (or set it null) — coerce to a string.
+  const filePath = typeof e.filePath === "string" ? e.filePath : "(unknown)";
   const time = fmtTime(new Date(e.ts));
-  const ic = safeIcon(e.outcome);
+  const ic = iconSlot(safeIcon(e.outcome));
   const tool = String(e.tool).padEnd(5);
-  const col = e.tool === "Bash" ? commandDisplay(e.filePath) : fileDisplay(e.filePath);
+  const raw = e.tool === "Bash" ? commandDisplay(filePath) : fileDisplay(filePath);
+  const col = fixedField(raw, PATH_COL);
   return `${time}  ${ic}  ${tool}  ${col}  ${safeLabel(e)}`;
 }
 
@@ -174,32 +217,43 @@ export function renderDashboard(entries: HookLogEntry[], opts: DashboardOptions)
 
   const status = `watching · Ctrl-C to exit                      updated ${fmtTime(now, true)}`;
 
+  // Whether to emit the optional chrome — the spacer blanks and the two rules —
+  // is decided up front so the TOTAL frame never exceeds `rows` on a tiny
+  // terminal (E7). Body capacity then absorbs whatever budget remains.
+  // Minimum frame is just the header line + status line (2 lines).
+  const headerRule = rows >= 4;             // 1 line
+  const footerRule = rows >= 5;             // 1 line
+  const tallies = rows >= 3;                // 1 line (drop before the spacers)
+  const spacers = rows >= 8 ? SPACER_LINES : 0; // 0, or 2 blanks bracketing body
+
+  const chrome =
+    1 +                       // header line
+    (headerRule ? 1 : 0) +
+    spacers +
+    (footerRule ? 1 : 0) +
+    (tallies ? 1 : 0) +
+    1;                        // status line
+  const capacity = Math.max(0, rows - chrome);
+
   const lines: string[] = [];
   lines.push(headerLine);
-  lines.push(rule(cols));
+  if (headerRule) lines.push(rule(cols));
 
-  // Body capacity: rows minus the header/footer chrome and the two blank spacers.
-  // Floors at 1 so a tiny terminal still shows the newest event (E7).
-  const capacity = Math.max(1, rows - HEADER_LINES - FOOTER_LINES - SPACER_LINES);
-
+  if (spacers) lines.push("");
   if (entries.length === 0) {
-    // Empty-state body, clamped to `capacity` lines so it never overruns (E7).
     const body = [
-      "",
       "   No activity yet — Crasp will show hook decisions here",
       "   as Claude Code works.",
-      "",
-    ].slice(0, Math.max(1, capacity));
+    ].slice(0, capacity);
     lines.push(...body);
   } else {
-    const shown = entries.slice(-capacity);
-    lines.push("");
+    const shown = entries.slice(-Math.max(0, capacity));
     for (const e of shown) lines.push(eventLine(e));
-    lines.push("");
   }
+  if (spacers) lines.push("");
 
-  lines.push(rule(cols));
-  lines.push(footerTallies(entries));
+  if (footerRule) lines.push(rule(cols));
+  if (tallies) lines.push(footerTallies(entries));
   lines.push(status);
 
   // Color contract (E1): strip ANSI entirely when color:false; otherwise keep it.
@@ -210,5 +264,6 @@ export function renderDashboard(entries: HookLogEntry[], opts: DashboardOptions)
     return clip(colored, cols);
   });
 
-  return finished.join("\n");
+  // Final guard: never emit more lines than the terminal has rows (E7).
+  return finished.slice(0, Math.max(1, rows)).join("\n");
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import chalk from "chalk";
 import {
   icon,
   outcomeLabel,
@@ -89,6 +90,23 @@ describe("parseSince (strict grammar, E6)", () => {
     expect(parseSince("0m", now)).toBe(INVALID_SINCE);
     expect(parseSince("0s", now)).toBe(INVALID_SINCE);
   });
+
+  it("treats a relative duration that overflows the Date range as invalid (E6)", () => {
+    // 999999999d underflows past the minimum representable Date → NaN, not a Date.
+    expect(parseSince("999999999d", now)).toBe(INVALID_SINCE);
+    expect(parseSince("9999999999999d", now)).toBe(INVALID_SINCE);
+  });
+
+  it("treats offset-less ISO datetimes as UTC, independent of host TZ", () => {
+    // Same instant regardless of process.env.TZ: offset-less ISO is read as UTC.
+    const naive = parseSince("2026-06-12T10:00", now) as Date;
+    expect(naive.toISOString()).toBe("2026-06-12T10:00:00.000Z");
+    const withSeconds = parseSince("2026-06-12T10:00:00", now) as Date;
+    expect(withSeconds.toISOString()).toBe("2026-06-12T10:00:00.000Z");
+    // A bare date stays UTC midnight (Date.parse spec behaviour, unchanged).
+    const dateOnly = parseSince("2026-06-12", now) as Date;
+    expect(dateOnly.toISOString()).toBe("2026-06-12T00:00:00.000Z");
+  });
 });
 
 import {
@@ -127,6 +145,8 @@ describe("visibleWidth + clip (E3)", () => {
   it("counts wide emoji icons as width 2", () => {
     expect(visibleWidth("🛡")).toBe(2);
     expect(visibleWidth("⚪")).toBe(2);
+    expect(visibleWidth("ℹ")).toBe(2);
+    expect(visibleWidth("⚠")).toBe(2); // same emoji-symbol class as ℹ (E3)
   });
   it("clip truncates on visible width without cutting an escape sequence", () => {
     const colored = "\x1b[31m" + "x".repeat(50) + "\x1b[0m";
@@ -134,6 +154,15 @@ describe("visibleWidth + clip (E3)", () => {
     expect(visibleWidth(out)).toBeLessThanOrEqual(10);
     // no dangling/half escape: stripping then re-measuring stays consistent
     expect(out.replace(ESC, "").length).toBeLessThanOrEqual(10);
+  });
+  it("clip re-balances a dropped SGR reset so color cannot bleed (E3)", () => {
+    // Opening SGR, then content, then reset — clip cuts before the reset.
+    const colored = "\x1b[31m" + "x".repeat(50) + "\x1b[0m";
+    const out = clip(colored, 10);
+    const opens = (out.match(/\x1b\[[0-9;]+m/g) ?? []).filter((c) => c !== "\x1b[0m").length;
+    const resets = (out.match(/\x1b\[0m/g) ?? []).length;
+    expect(opens).toBe(resets);          // SGR balanced
+    expect(out.endsWith("\x1b[0m")).toBe(true); // ends with a reset
   });
 });
 
@@ -168,11 +197,14 @@ describe("renderDashboard", () => {
       opts({ rows: 10, cols: 72 }),
     );
     // Pin the whole frame. Frozen to the renderer's REAL output (UTC, plain text).
+    // The icon column is padded to a fixed 2-cell slot so the Write/path/label
+    // columns line up flush across a clean (✓, width 1) and a denied (🛡, width 2)
+    // row — note the narrow ✓ carries an extra trailing space.
     const EXPECTED = [
       "Crasp · watching .crasp/events.ndjson                    Today: 2 events",
       "────────────────────────────────────────────────────────────────────────",
       "",
-      "14:02  ✓  Write  src/index.ts          clean",
+      "14:02  ✓   Write  src/index.ts          clean",
       "14:04  🛡  Write  src/secrets.ts        BLOCKED [token-leakage]",
       "",
       "────────────────────────────────────────────────────────────────────────",
@@ -180,6 +212,13 @@ describe("renderDashboard", () => {
       "watching · Ctrl-C to exit                      updated 14:05:11",
     ].join("\n");
     expect(out).toBe(EXPECTED);
+
+    // Columns line up: the "Write" tool and the path start at the same offset
+    // on both rows despite the differing icon glyph widths.
+    const rowClean = out.split("\n").find((l) => l.startsWith("14:02"))!;
+    const rowDenied = out.split("\n").find((l) => l.startsWith("14:04"))!;
+    expect(rowClean.indexOf("Write")).toBe(rowDenied.indexOf("Write"));
+    expect(rowClean.indexOf("src/")).toBe(rowDenied.indexOf("src/"));
   });
 
   it("shows the empty-state placeholder when there are no entries", () => {
@@ -201,6 +240,52 @@ describe("renderDashboard", () => {
     expect(out.split("\n").length).toBeLessThanOrEqual(12);
     expect(out).toContain("src/f199.ts"); // newest present
     expect(out).not.toContain("src/f0.ts"); // oldest scrolled off
+  });
+
+  it("never exceeds `rows` on tiny terminals, empty AND populated (E7)", () => {
+    const many = Array.from({ length: 50 }, (_, i) =>
+      entry({ ts: `2026-06-12T10:${String(i % 60).padStart(2, "0")}:00.000Z`, filePath: `src/f${i}.ts` }),
+    );
+    for (const rows of [5, 1]) {
+      const empty = renderDashboard([], opts({ rows }));
+      expect(empty.split("\n").length).toBeLessThanOrEqual(rows);
+      const populated = renderDashboard(many, opts({ rows }));
+      expect(populated.split("\n").length).toBeLessThanOrEqual(rows);
+    }
+  });
+
+  it("coerces a missing/null filePath to a placeholder, never crashes (MEDIUM)", () => {
+    const noPath = { ts: "2026-06-12T14:00:00.000Z", tool: "Write", outcome: "clean" } as unknown as HookLogEntry;
+    const nullPath = { ts: "2026-06-12T14:00:00.000Z", tool: "Write", filePath: null, outcome: "clean" } as unknown as HookLogEntry;
+    let out = "";
+    expect(() => { out = renderDashboard([noPath, nullPath], opts()); }).not.toThrow();
+    expect(out).toContain("(unknown)");
+  });
+
+  it("color:true keeps ANSI and every event/footer line is SGR-balanced (E3)", () => {
+    // chalk auto-disables off a TTY (level 0); force colors so the colored label
+    // path actually exercises the clip()/reset-balance logic.
+    const prevLevel = chalk.level;
+    chalk.level = 1;
+    try {
+      // cols=48 cuts the colored label (BLOCKED [..]) mid-sequence so the
+      // chalk close code is dropped and clip() must re-balance with a reset.
+      const out = renderDashboard(
+        [entry({ tool: "Write", filePath: "src/secrets.ts", outcome: "denied", ruleId: "token-leakage" })],
+        opts({ color: true, cols: 48 }),
+      );
+      // ANSI is present (color:true)
+      expect(/\x1b\[[0-9;]*m/.test(out)).toBe(true);
+      const eventRow = out.split("\n").find((l) => l.startsWith("14:00"))!;
+      expect(eventRow).toContain("\x1b["); // it really is colored
+      expect(eventRow.endsWith("\x1b[0m")).toBe(true); // reset restored after the cut
+      // every line that opens an SGR ends with a reset (no bleed)
+      for (const line of out.split("\n")) {
+        if (line.includes("\x1b[")) expect(line.endsWith("\x1b[0m") || line.endsWith("\x1b[39m") || line.endsWith("\x1b[22m")).toBe(true);
+      }
+    } finally {
+      chalk.level = prevLevel;
+    }
   });
 
   it("emoji-bearing rows at small cols do not overflow visible width (E3)", () => {
