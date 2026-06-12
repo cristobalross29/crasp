@@ -50,6 +50,7 @@ program
   .option("--staged", "scan staged git files")
   .option("--stdin", "read content from stdin and check against policy")
   .option("--hook-input <tool>", "check a PreToolUse hook JSON payload from stdin (Write, Edit, Read, Bash)")
+  .option("--post", "scan a PostToolUse result payload instead (inbound: Read, Bash, WebFetch, WebSearch)")
   .action(checkCommand);
 
 program
