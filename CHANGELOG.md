@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `crasp watch` — a dependency-free live terminal dashboard that tails
+  .crasp/events.ndjson and shows recent hook decisions plus running tallies
+  (clean / ask / advisory / blocked / exception), updating in real time.
+  `--once` renders a single snapshot; `--since <Ns|Nm|Nh|Nd|ISO>` scopes it to a
+  session (invalid values are rejected). Non-TTY invocations (pipes, CI) print one
+  snapshot and exit. Time is rendered in UTC for deterministic output.
+
 ---
 
 ## [0.1.2] - 2026-06-11
