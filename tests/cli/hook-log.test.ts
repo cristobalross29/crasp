@@ -205,4 +205,26 @@ describe("hook-log command", () => {
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("renders an inbound-flagged post entry with a [post] tag", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "af-hook-log-inbound-"));
+    try {
+      await makeLogDir(tmpDir, [
+        makeEntry({
+          tool: "WebFetch",
+          filePath: "https://evil.example.com",
+          outcome: "inbound-flagged",
+          ruleId: "inbound-instruction-override",
+          phase: "post",
+        }),
+      ]);
+      const result = spawnSync("node", [CLI, "hook-log"], { cwd: tmpDir, encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("WebFetch");
+      expect(result.stdout).toContain("post");
+      expect(result.stdout).toContain("inbound");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

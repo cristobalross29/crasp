@@ -81,6 +81,7 @@ function buildSummary(entries: HookLogEntry[]): {
   blocked: number;
   asks: number;
   advisories: number;
+  inbound: number;
   clean: number;
 } {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -90,6 +91,7 @@ function buildSummary(entries: HookLogEntry[]): {
     blocked:     window.filter((e) => e.outcome === "denied").length,
     asks:        window.filter((e) => e.outcome === "ask").length,
     advisories:  window.filter((e) => e.outcome === "advisory").length,
+    inbound:     window.filter((e) => e.outcome === "inbound-flagged").length,
     clean:       window.filter((e) => e.outcome === "clean" || e.outcome === "exception").length,
   };
 }
@@ -98,7 +100,7 @@ function printSummaryBlock(stats: ReturnType<typeof buildSummary>): void {
   console.log("\nLast 30 days");
   console.log("─────────────────────────────────────────────────────────────");
   console.log(
-    `  ${stats.total} total  ·  ${stats.blocked} blocked  ·  ${stats.asks} asks  ·  ${stats.advisories} advisories  ·  ${stats.clean} clean`
+    `  ${stats.total} total  ·  ${stats.blocked} blocked  ·  ${stats.asks} asks  ·  ${stats.advisories} advisories  ·  ${stats.inbound} inbound  ·  ${stats.clean} clean`
   );
 }
 
@@ -205,14 +207,15 @@ export async function hookLogCommand(options: HookLogOptions = {}): Promise<void
 
       const time     = formatTime(entry.ts);
       const ic       = icon(entry.outcome);
-      const tool     = entry.tool.padEnd(5);
+      const phaseTag = entry.phase === "post" ? chalk.dim("[post] ") : "";
+      const tool     = entry.tool.padEnd(9); // fits "WebSearch"
       const filePart =
         entry.tool === "Bash"
           ? commandDisplay(entry.filePath)
           : fileDisplay(entry.filePath);
       const label    = outcomeLabel(entry);
 
-      console.log(`  ${time}  ${ic}  ${tool}  ${filePart}  ${label}`);
+      console.log(`  ${time}  ${ic}  ${phaseTag}${tool}  ${filePart}  ${label}`);
     }
   }
 
