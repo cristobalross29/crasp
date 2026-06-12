@@ -28,22 +28,26 @@ export function capInbound(text: string): string {
   return lastCode >= 0xd800 && lastCode <= 0xdbff ? sliced.slice(0, -1) : sliced;
 }
 
-// Keys that carry human-readable text across the tool-specific tool_response
-// shapes (Read content, Bash stdout/stderr, WebFetch result/body, etc.).
-const TEXT_KEYS = ["content", "stdout", "stderr", "output", "result", "text", "body", "data"] as const;
-
 export function extractInboundText(toolResponse: unknown): string {
   const parts: string[] = [];
   let total = 0;
+
+  // Slice each pushed string to the REMAINING budget so a single huge string
+  // never produces an oversized intermediate (LOW finding) before capInbound runs.
+  const push = (s: string): void => {
+    if (s.length === 0) return;
+    const remaining = INBOUND_MAX_CHARS - total;
+    if (remaining <= 0) return;
+    const piece = s.length > remaining ? s.slice(0, remaining) : s;
+    parts.push(piece);
+    total += piece.length;
+  };
 
   const walk = (node: unknown, depth: number): void => {
     if (total >= INBOUND_MAX_CHARS || depth > MAX_EXTRACT_DEPTH) return;
 
     if (typeof node === "string") {
-      if (node.length > 0) {
-        parts.push(node);
-        total += node.length;
-      }
+      push(node);
       return;
     }
     if (Array.isArray(node)) {
@@ -54,31 +58,14 @@ export function extractInboundText(toolResponse: unknown): string {
       return;
     }
     if (node !== null && typeof node === "object") {
-      const obj = node as Record<string, unknown>;
-      let matchedKey = false;
-      for (const key of TEXT_KEYS) {
+      // Walk EVERY field — never suppress siblings once a known text key is
+      // found (HIGH 4): an injection in metadata.title must still be scanned.
+      // String values go in directly; nested objects/arrays recurse. Non-string
+      // scalars are ignored. Depth cap + running budget still bound the work.
+      for (const v of Object.values(node as Record<string, unknown>)) {
         if (total >= INBOUND_MAX_CHARS) return;
-        const v = obj[key];
-        if (typeof v === "string" && v.length > 0) {
-          matchedKey = true;
-          parts.push(v);
-          total += v.length;
-        } else if (v !== null && typeof v === "object") {
-          matchedKey = true;
-          walk(v, depth + 1);
-        }
-      }
-      if (!matchedKey) {
-        // No known text key — stringify so we never silently skip content.
-        try {
-          const s = JSON.stringify(node);
-          if (s) {
-            parts.push(s);
-            total += s.length;
-          }
-        } catch {
-          // circular / unserializable — skip
-        }
+        if (typeof v === "string") push(v);
+        else if (v !== null && typeof v === "object") walk(v, depth + 1);
       }
       return;
     }
@@ -114,36 +101,54 @@ interface InboundRule {
   pattern: RegExp;
 }
 
+// ReDoS-safety invariant (HIGH 1): EVERY whitespace quantifier in these patterns
+// is BOUNDED (`\s{1,N}`), and no two whitespace-consuming groups are placed
+// adjacently where one is optional. The optional politeness phrase below INCLUDES
+// its own trailing whitespace (`(?:WORD\s{1,40})?`) so there is exactly one
+// mandatory `\s{1,40}` before it — the absence of the phrase cannot create an
+// ambiguous "optional then optional whitespace" boundary. This eliminates the
+// quadratic backtracking that a flood of whitespace previously triggered.
+
+// Model-address token followed by optional connector punctuation and one bounded
+// whitespace run, then an OPTIONAL politeness phrase (which carries its own
+// trailing whitespace). After this, the verb follows directly.
+const ADDR = String.raw`\b(?:assistant|ai|claude|model|agent|llm|chatbot)\b[,:]?\s{1,40}(?:(?:you must|please|now|kindly)\s{1,40})?`;
+
 // Bounded / anchored patterns only — no nested quantifiers, no unbounded
 // alternation over input. Tightened (D6) so ordinary docs do not fire: each rule
 // requires a model-address, a curl-pipe, or an explicit URL destination.
 export const INBOUND_INJECTION_RULES: InboundRule[] = [
   {
-    // Mandatory model-address token before the imperative.
+    // Model-address token before the imperative. Politeness word is OPTIONAL
+    // (HIGH 2) so a bare imperative ("Claude ignore all previous instructions")
+    // fires, while a benign predicate ("Claude is a helpful assistant") does not
+    // — the verb set excludes copulas.
     ruleId: "inbound-instruction-override",
     severity: "high",
-    pattern:
-      /\b(?:assistant|ai|claude|model|agent|llm|chatbot)\b[,:]?\s+(?:you\s+must|please|now|kindly)\s+(?:ignore|disregard|forget|override|run|execute|fetch|send|delete|curl|exfiltrate)\b/i,
+    pattern: new RegExp(
+      ADDR + String.raw`(?:ignore|disregard|forget|override|run|execute|fetch|send|delete|curl|exfiltrate)\b`,
+      "i"
+    ),
   },
   {
     // Only the unambiguous download-pipe-to-shell form — "run the following
     // command" alone no longer fires.
     ruleId: "inbound-embedded-command",
     severity: "high",
-    pattern: /\bcurl\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b/i,
+    pattern: /\bcurl\b[^\n|]{0,200}\|\s{1,20}(?:sudo\s{1,20})?(?:sh|bash|zsh)\b/i,
   },
   {
     // Exfil verb + secret noun + an explicit URL destination.
     ruleId: "inbound-data-exfil-directive",
     severity: "high",
     pattern:
-      /(?:send|upload|post|exfiltrate|leak)\s+(?:the\s+)?(?:contents?\s+of\s+|your\s+)?(?:\.env\b|secrets?\b|credentials?\b|api[_ -]?keys?\b|tokens?\b)[^\n]{0,80}?\b(?:to|into)\b[^\n]{0,40}?https?:\/\//i,
+      /(?:send|upload|post|exfiltrate|leak)\s{1,40}(?:the\s{1,40})?(?:(?:contents?\s{1,40}of|your)\s{1,40})?(?:\.env\b|secrets?\b|credentials?\b|api[_ -]?keys?\b|tokens?\b)[^\n]{0,80}?\b(?:to|into)\b[^\n]{0,40}?https?:\/\//i,
   },
   {
     ruleId: "inbound-trigger-on-read",
     severity: "medium",
     pattern:
-      /\bwhen\s+you\s+(?:read|see|process|parse)\s+this\b|\bas\s+an?\s+(?:ai|assistant|llm)\s+(?:reading|processing|seeing)\s+this\b/i,
+      /\bwhen\s{1,40}you\s{1,40}(?:read|see|process|parse)\s{1,40}this\b|\bas\s{1,40}an?\s{1,40}(?:ai|assistant|llm)\s{1,40}(?:reading|processing|seeing)\s{1,40}this\b/i,
   },
   {
     // Tool-call imperative addressed to the model. Co-occurrence with a URL or
@@ -151,8 +156,10 @@ export const INBOUND_INJECTION_RULES: InboundRule[] = [
     // raw hits are gated before they become findings.
     ruleId: "inbound-tool-injection",
     severity: "high",
-    pattern:
-      /\b(?:assistant|ai|claude|model|agent|llm)\b[,:]?\s+(?:you\s+must|please|now|kindly)?\s*(?:call|invoke|use|trigger)\s+the\s+\w{1,40}\s+(?:tool|function|mcp\s+server)\b/i,
+    pattern: new RegExp(
+      ADDR + String.raw`(?:call|invoke|use|trigger)\s{1,40}the\s{1,40}\w{1,40}\s{1,40}(?:tool|function|mcp\s{1,40}server)\b`,
+      "i"
+    ),
   },
 ];
 
