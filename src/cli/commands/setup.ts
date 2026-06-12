@@ -266,9 +266,9 @@ const INBOUND_HOOK_TOOLS = ["Read", "Bash", "WebFetch", "WebSearch"] as const;
 type InboundHookToolName = (typeof INBOUND_HOOK_TOOLS)[number];
 
 // BROAD detector (D10): treat ANY crasp PostToolUse hook for this matcher as a
-// crasp post hook — do NOT require it to contain "--post". This way a stale or
-// older-format crasp post hook is still removed before we reinstall, avoiding
-// duplicates. (The command we write always contains "--post".)
+// crasp post hook — do NOT require it to contain "--post". Used ONLY for
+// stale-hook cleanup/removal so a stale or older-format crasp post hook is still
+// dropped before we reinstall, avoiding duplicates.
 function isCraspPostHook(h: unknown, tool: InboundHookToolName): boolean {
   return (
     typeof h === "object" &&
@@ -276,6 +276,17 @@ function isCraspPostHook(h: unknown, tool: InboundHookToolName): boolean {
     (h as Record<string, unknown>).matcher === tool &&
     JSON.stringify(h).includes("crasp")
   );
+}
+
+// STRICT detector (MED 6): a PROPERLY-installed post hook for this matcher must
+// carry `--hook-input <tool>` AND `--post` AND "crasp". Used for the
+// allPostInstalled gate so a stale crasp post hook lacking `--post` does NOT make
+// setup early-return — it gets repaired instead.
+function isInstalledPostHook(h: unknown, tool: InboundHookToolName): boolean {
+  if (typeof h !== "object" || h === null) return false;
+  if ((h as Record<string, unknown>).matcher !== tool) return false;
+  const s = JSON.stringify(h);
+  return s.includes("crasp") && s.includes(`--hook-input ${tool}`) && s.includes("--post");
 }
 
 async function ensureClaudeCodeHooks(root: string): Promise<void> {
@@ -301,7 +312,7 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
     preToolUse.some((h) => isNewFormatHook(h, tool))
   );
   const allPostInstalled = INBOUND_HOOK_TOOLS.every((tool) =>
-    postToolUse.some((h) => isCraspPostHook(h, tool))
+    postToolUse.some((h) => isInstalledPostHook(h, tool))
   );
 
   if (allInstalled && allPostInstalled) {

@@ -185,6 +185,71 @@ describe("setupCommand", () => {
     }
   });
 
+  // MED 6: a STALE crasp PostToolUse hook that lacks `--post` must NOT be treated
+  // as installed — setup must repair it to the proper `--post` form, without
+  // duplicating, and must preserve third-party hooks.
+  it("repairs a stale crasp post hook missing --post and preserves third-party hooks", async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-stale-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(freshRoot);
+    try {
+      await mkdir(path.join(freshRoot, ".claude"), { recursive: true });
+      const seeded = {
+        hooks: {
+          PostToolUse: [
+            // Stale crasp post hooks for ALL inbound tools — each has "crasp" +
+            // matcher but NO --post. The broad check would treat these as
+            // installed and early-return, never repairing them (the MED 6 bug).
+            ...["Read", "Bash", "WebFetch", "WebSearch"].map((tool) => ({
+              matcher: tool,
+              hooks: [{ type: "command", command: `crasp check --hook-input ${tool}` }],
+            })),
+            // Third-party post hook that must be preserved untouched.
+            {
+              matcher: "Notify",
+              hooks: [{ type: "command", command: "/usr/bin/other-tool --watch" }],
+            },
+          ],
+        },
+      };
+      await writeFile(path.join(freshRoot, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
+      await setupCommand();
+      const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      const hooks = settings.hooks as Record<string, unknown>;
+      const postToolUse = hooks.PostToolUse as Array<Record<string, unknown>>;
+
+      // Third-party Read hook preserved.
+      const thirdParty = postToolUse.filter((h) =>
+        JSON.stringify(h).includes("other-tool")
+      );
+      expect(thirdParty).toHaveLength(1);
+
+      // Every crasp inbound tool now has exactly one proper --post hook.
+      for (const tool of ["Read", "Bash", "WebFetch", "WebSearch"] as const) {
+        const craspHooks = postToolUse.filter(
+          (h) =>
+            h.matcher === tool &&
+            JSON.stringify(h).includes("crasp") &&
+            JSON.stringify(h).includes("--post")
+        );
+        expect(craspHooks, `${tool} should have exactly one --post crasp hook`).toHaveLength(1);
+      }
+
+      // The stale crasp WebFetch hook (no --post) must be gone.
+      const staleWebFetch = postToolUse.filter(
+        (h) =>
+          h.matcher === "WebFetch" &&
+          JSON.stringify(h).includes("crasp") &&
+          !JSON.stringify(h).includes("--post")
+      );
+      expect(staleWebFetch).toHaveLength(0);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(freshRoot, { recursive: true, force: true });
+    }
+  });
+
   it("starter policy includes commented exceptions block", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-policy-exceptions-"));
     vi.spyOn(console, "log").mockImplementation(() => undefined);
