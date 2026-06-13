@@ -142,6 +142,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
     chalk.dim(
       "\nWhat's now running (automatically, no extra commands needed):\n" +
         "  Hook guard  — every Write, Edit, Read, and Bash command Claude Code makes is intercepted\n" +
+        "  Inbound scan — web/file/command RESULTS are scanned for prompt injection before Claude reads them\n" +
         "  MCP server  — Claude Code will start it on its own via .mcp.json\n" +
         "  Git hook    — staged files are scanned before every commit\n" +
         "\nOptional next steps:\n" +
@@ -261,6 +262,42 @@ function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
   return isCraspHook(h, tool) && JSON.stringify(h).includes("--hook-input");
 }
 
+const INBOUND_HOOK_TOOLS = ["Read", "Bash", "WebFetch", "WebSearch"] as const;
+type InboundHookToolName = (typeof INBOUND_HOOK_TOOLS)[number];
+
+// BROAD detector (D10): treat ANY crasp PostToolUse hook for this matcher as a
+// crasp post hook — do NOT require it to contain "--post". Used ONLY for
+// stale-hook cleanup/removal so a stale or older-format crasp post hook is still
+// dropped before we reinstall, avoiding duplicates.
+function isCraspPostHook(h: unknown, tool: InboundHookToolName): boolean {
+  return (
+    typeof h === "object" &&
+    h !== null &&
+    (h as Record<string, unknown>).matcher === tool &&
+    JSON.stringify(h).includes("crasp")
+  );
+}
+
+// STRICT detector (MED 6): a PROPERLY-installed post hook for this matcher must
+// carry `--hook-input <tool>` AND `--post` AND "crasp". Used for the
+// allPostInstalled gate so a stale crasp post hook lacking `--post` does NOT make
+// setup early-return — it gets repaired instead.
+function isInstalledPostHook(h: unknown, tool: InboundHookToolName): boolean {
+  if (typeof h !== "object" || h === null) return false;
+  if ((h as Record<string, unknown>).matcher !== tool) return false;
+  const s = JSON.stringify(h);
+  // MED 2(a): match a real `--post` flag token, not a substring — `s.includes
+  // ("--post")` also matches `--postpone`/`--postfix`.
+  return s.includes("crasp") && s.includes(`--hook-input ${tool}`) && hasPostFlag(s);
+}
+
+// A real `--post` flag token (followed by whitespace or end), not a prefix of a
+// longer flag like `--postpone`. The serialized form embeds the command as a JSON
+// string, so a trailing `"` also terminates the token.
+function hasPostFlag(commandString: string): boolean {
+  return /(?:^|\s)--post(?:\s|"|$)/.test(commandString);
+}
+
 async function ensureClaudeCodeHooks(root: string): Promise<void> {
   const claudeDir = path.join(root, ".claude");
   const settingsPath = path.join(claudeDir, "settings.json");
@@ -277,13 +314,60 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
 
   const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
+  const postToolUse = (hooks.PostToolUse as unknown[] | undefined) ?? [];
 
-  // If all four new-format hooks are already installed, nothing to do
+  const bin = resolveCraspBin();
+  const canonicalPostCommand = (tool: InboundHookToolName): string =>
+    `${bin} check --hook-input ${tool} --post`;
+  const isCanonicalPostHook = (h: unknown, tool: InboundHookToolName): boolean =>
+    typeof h === "object" &&
+    h !== null &&
+    (h as Record<string, unknown>).matcher === tool &&
+    JSON.stringify(h).includes(canonicalPostCommand(tool));
+
+  // MED 2(b): ALWAYS run the broad post-hook cleanup BEFORE the early-return gate.
+  // Drop every crasp PostToolUse hook for these matchers that is NOT the canonical
+  // current `--post` hook (stale/old-format), and dedupe canonical hooks so each
+  // tool keeps exactly one. Third-party (non-crasp) hooks are preserved untouched.
+  // Without this, a tool that has BOTH a proper `--post` hook and a stale crasp
+  // post hook satisfies `allPostInstalled`, the gate returns early, and the
+  // duplicate survives.
+  const seenCanonical = new Set<InboundHookToolName>();
+  const cleanedPost = postToolUse.filter((h) => {
+    const tool = INBOUND_HOOK_TOOLS.find((t) => isCraspPostHook(h, t));
+    if (tool === undefined) return true; // not a crasp post hook → preserve
+    if (isCanonicalPostHook(h, tool)) {
+      if (seenCanonical.has(tool)) return false; // duplicate canonical → drop
+      seenCanonical.add(tool);
+      return true;
+    }
+    return false; // stale crasp post hook (old format / no --post) → drop
+  });
+
+  // Compute install state on the CLEANED set.
   const allInstalled = HOOK_TOOLS.every((tool) =>
     preToolUse.some((h) => isNewFormatHook(h, tool))
   );
+  const allPostInstalled = INBOUND_HOOK_TOOLS.every((tool) =>
+    cleanedPost.some((h) => isInstalledPostHook(h, tool))
+  );
 
-  if (allInstalled) {
+  // Append any missing canonical post hooks.
+  for (const tool of INBOUND_HOOK_TOOLS) {
+    if (!cleanedPost.some((h) => isInstalledPostHook(h, tool))) {
+      cleanedPost.push({
+        matcher: tool,
+        hooks: [{ type: "command", command: canonicalPostCommand(tool) }],
+      });
+    }
+  }
+
+  const postChanged =
+    cleanedPost.length !== postToolUse.length ||
+    cleanedPost.some((h, i) => h !== postToolUse[i]);
+
+  // No-op only if PRE is fully installed AND POST needed no changes.
+  if (allInstalled && allPostInstalled && !postChanged) {
     console.log(chalk.yellow("Skipped .claude/settings.json hooks (already installed)"));
     return;
   }
@@ -293,8 +377,6 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
     (h) => !HOOK_TOOLS.some((tool) => isCraspHook(h, tool))
   );
 
-  const bin = resolveCraspBin();
-
   for (const tool of HOOK_TOOLS) {
     filteredHooks.push({
       matcher: tool,
@@ -303,11 +385,13 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   }
 
   hooks.PreToolUse = filteredHooks;
+  hooks.PostToolUse = cleanedPost;
+
   settings.hooks = hooks;
 
   await mkdir(claudeDir, { recursive: true });
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Write, Edit, Read, Bash)"));
+  console.log(chalk.dim("Updated .claude/settings.json with Crasp hooks (Pre: Write, Edit, Read, Bash; Post: Read, Bash, WebFetch, WebSearch)"));
 }
 
 // ── CLAUDE.md documentation block ────────────────────────────────────────────
@@ -322,6 +406,7 @@ Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, Read
 Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
 Bash commands are screened for destructive actions and secret exfiltration before they run.
 Content written to files is also scanned for leaked secrets and policy violations.
+Content returned by Read, web fetches/searches, and Bash is scanned for injected instructions and leaked secrets before it re-enters context (a non-blocking caution; PostToolUse has no approval dialog).
 Policy rules live in \`crasp.policy.yml\`. Run \`crasp status\` to verify configuration.
 ${CLAUDE_MD_SENTINEL_END}`;
 

@@ -110,6 +110,25 @@ Claude Code fires PreToolUse for Write/Edit/Read/Bash
       → appendHookLogEntry() → .crasp/events.ndjson (NDJSON, never throws)
 ```
 
+### Inbound check pipeline (PostToolUse)
+
+```
+crasp check --hook-input <Tool> --post
+  → runInboundHookCheck()   (entire body fail-open: any throw → exit 0)
+      1. read stdin (capped ~1MB) → parse JSON → { tool_input, tool_response }
+      2. target = redactCommand(url | file_path | (Tool: query))   # logged on every path
+      3. text = capInbound(normalizeInbound(extractInboundText(tool_response)))
+         empty → log "clean" phase:"post", exit 0
+      4. detectInbound(text, policy) = scanContent (secrets + builtin rules)
+         + checkInboundInjection (inbound rules, tool-call gated by URL/secret co-occurrence)
+      5. findings → additionalContext caution (rule IDs + count, NO excerpt),
+         log "inbound-flagged" phase:"post"; else log "clean" phase:"post"
+```
+
+`inbound-rules.ts` is the extension point (mirrors `bash-rules.ts`); PostToolUse uses
+`additionalContext`, never `permissionDecision`; the caution and the log never contain
+matched content.
+
 ### MCP server (Claude self-checks)
 
 ```

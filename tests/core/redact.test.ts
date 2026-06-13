@@ -122,6 +122,82 @@ describe("redactCommand", () => {
     expect(out).toContain("[REDACTED]");
   });
 
+  // MED 5: colon-form secret assignments (e.g. in a URL query or WebSearch text)
+  it("redacts colon-form client_secret", () => {
+    const out = redactCommand("client_secret: abc123def456ghi789jkl");
+    expect(out).not.toContain("abc123def456ghi789jkl");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts colon-form api_key in a URL-ish target", () => {
+    const out = redactCommand("(WebSearch: lookup api_key:sk-livetoken1234567890abcdef)");
+    expect(out).not.toContain("sk-livetoken1234567890abcdef");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts colon-form access_token (case-insensitive)", () => {
+    const out = redactCommand("Access_Token : MyVerySecretAccessToken123");
+    expect(out).not.toContain("MyVerySecretAccessToken123");
+  });
+
+  it("redacts colon-form password", () => {
+    const out = redactCommand("password: hunter2supersecret");
+    expect(out).not.toContain("hunter2supersecret");
+  });
+
+  // MED 5: bearer tokens in a target/URL
+  it("redacts a bearer token", () => {
+    const out = redactCommand("curl -H 'Authorization: Bearer abc123XYZ_secret-token'");
+    expect(out).not.toContain("abc123XYZ_secret-token");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a lowercase bearer token", () => {
+    const out = redactCommand("authorization: bearer eyAbCdEfGhIjKlMnOp123456");
+    expect(out).not.toContain("eyAbCdEfGhIjKlMnOp123456");
+  });
+
+  it("does not redact a too-short bearer-like word", () => {
+    // "bearer of" — the trailing word is short and not a token; leave unchanged.
+    expect(redactCommand("the bearer of bad news")).toBe("the bearer of bad news");
+  });
+
+  // LOW/MED 3: a `bearer <token>` preceded by an `=`/colon assignment must NOT
+  // leak — the assignment pattern used to consume the word "bearer" as the value
+  // (stopping at the space), so the real token escaped. Bearer redaction now runs
+  // first.
+  it("redacts a bearer token preceded by an = assignment (token=bearer …)", () => {
+    const out = redactCommand("token=bearer ABCDEF1234567890");
+    expect(out).not.toContain("ABCDEF1234567890");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a bearer token preceded by auth= assignment", () => {
+    const out = redactCommand("auth=bearer XYZ12345");
+    expect(out).not.toContain("XYZ12345");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts an authorization: bearer header form", () => {
+    const out = redactCommand("authorization: bearer ABCDEFGH12345678");
+    expect(out).not.toContain("ABCDEFGH12345678");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("redacts a plain bearer token", () => {
+    const out = redactCommand("bearer PlainTokenValue123456");
+    expect(out).not.toContain("PlainTokenValue123456");
+    expect(out).toContain("[REDACTED]");
+  });
+
+  it("does not mangle 'the-bearer-of-bad-news'", () => {
+    expect(redactCommand("the-bearer-of-bad-news")).toBe("the-bearer-of-bad-news");
+  });
+
+  it("does not mangle a too-short bearer token (under 8 chars)", () => {
+    expect(redactCommand("bearer x")).toBe("bearer x");
+  });
+
   // Idempotency
   it("is idempotent on a curl -u case", () => {
     const cmd = "curl -u alice:SuperSecret123 https://api.example.com";
@@ -136,6 +212,21 @@ describe("redactCommand", () => {
   // ReDoS safety — 50KB input completes in <100ms
   it("handles a 50KB command within 100ms (ReDoS safety)", () => {
     const big = "curl -u alice:pass " + "x".repeat(50_000);
+    const t0 = performance.now();
+    redactCommand(big);
+    expect(performance.now() - t0).toBeLessThan(100);
+  });
+
+  // MED 5: ReDoS safety for the new colon-form + bearer patterns.
+  it("handles a whitespace-flooded colon-form within 100ms (ReDoS safety)", () => {
+    const big = "client_secret" + " ".repeat(200_000) + ": " + "x".repeat(50_000);
+    const t0 = performance.now();
+    redactCommand(big);
+    expect(performance.now() - t0).toBeLessThan(100);
+  });
+
+  it("handles a whitespace-flooded bearer within 100ms (ReDoS safety)", () => {
+    const big = "bearer" + " ".repeat(200_000) + "x".repeat(50_000);
     const t0 = performance.now();
     redactCommand(big);
     expect(performance.now() - t0).toBeLessThan(100);

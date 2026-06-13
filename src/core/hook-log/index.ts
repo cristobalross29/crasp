@@ -1,7 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { HookLogEntry, HookLogOutcome, HookLogTier } from "../../types/index.js";
-import type { HookTool } from "../scanner/sensitive-paths.js";
+import type { HookLogEntry, HookLogOutcome, HookLogTier, HookPhase } from "../../types/index.js";
 
 export { HookLogEntry };
 
@@ -17,11 +16,12 @@ export function hookLogPath(root?: string): string {
 
 export async function appendHookLogEntry(
   filePath: string,
-  tool: HookTool,
+  tool: HookLogEntry["tool"],
   outcome: HookLogOutcome,
   tier?: HookLogTier,
   ruleId?: string,
-  root?: string
+  root?: string,
+  phase?: HookPhase
 ): Promise<void> {
   try {
     const logPath = hookLogPath(root);
@@ -34,6 +34,7 @@ export async function appendHookLogEntry(
       outcome,
       ...(tier !== undefined ? { tier } : {}),
       ...(ruleId !== undefined ? { ruleId } : {}),
+      ...(phase !== undefined ? { phase } : {}),
     };
 
     await appendFile(logPath, JSON.stringify(entry) + "\n");

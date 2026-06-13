@@ -71,6 +71,18 @@ const SECRET_SUFFIX_ENV_RE =
 const BARE_SECRET_ENV_RE =
   /\b((?:export\s+)?(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL|AUTH)S?)=([^\s]{1,512})/gi;
 
+// MED 5: colon-form secret assignments — `client_secret: <value>`, `token : x`,
+// etc. Bounded whitespace around the colon (\s{0,40}) keeps this linear — no bare
+// \s* adjacent to another quantifier. Value runs to the next whitespace.
+const COLON_SECRET_RE =
+  /\b(api[_-]?key|secret|client[_-]?secret|access[_-]?token|auth[_-]?token|token|password)\s{0,40}:\s{0,40}([^\s"']{1,512})/gi;
+
+// MED 5: bearer tokens — `bearer <token>` (e.g. an Authorization header in a URL
+// or query that lands in the logged target). Bounded whitespace; token is at
+// least 8 chars of the URL-safe-ish token alphabet so "bearer of bad news" is left
+// alone.
+const BEARER_TOKEN_RE = /\bbearer\s{1,40}([A-Za-z0-9._\-]{8,512})/gi;
+
 // URL userinfo: scheme://user:password@host
 // Regex applied per-segment (split on @) to avoid catastrophic backtracking
 // on large strings with no @ sign.
@@ -115,6 +127,17 @@ export function redactCommand(command: string): string {
       `${prefix}${redactValue(password)}`
   );
 
+  // LOW/MED 3: Bearer tokens BEFORE the assignment/colon patterns. Otherwise an
+  // assignment like `token=bearer ABC…` is consumed by the env/colon pattern as
+  // `token=[REDACTED]` (value="bearer", stops at the space) and the real token
+  // leaks. Redacting bearer first turns it into `token=bearer [REDACTED]…`; the
+  // later assignment pattern then sees the already-redacted form.
+  out = out.replace(
+    BEARER_TOKEN_RE,
+    (whole: string, token: string) =>
+      `${whole.slice(0, whole.length - token.length)}${redactValue(token)}`
+  );
+
   // Secret-named env assignments — two bounded patterns, each linear.
   const envReplacer = (_: string, name: string, value: string): string => {
     const stripped = value.replace(/^["']|["']$/g, "");
@@ -122,6 +145,15 @@ export function redactCommand(command: string): string {
   };
   out = out.replace(SECRET_SUFFIX_ENV_RE, envReplacer);
   out = out.replace(BARE_SECRET_ENV_RE, envReplacer);
+
+  // Colon-form secret assignments — keep the name + colon, redact the value.
+  out = out.replace(
+    COLON_SECRET_RE,
+    (whole: string, name: string, value: string) => {
+      const sep = whole.slice(name.length, whole.length - value.length);
+      return `${name}${sep}${redactValue(value)}`;
+    }
+  );
 
   return out;
 }

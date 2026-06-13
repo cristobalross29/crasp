@@ -47,6 +47,15 @@ Detection is heuristic (pattern-based, not a shell parser), so determined obfusc
 can evade rules — it reduces risk, it is not a sandbox. Secret redaction in the
 activity log is best-effort.
 
+Crasp also scans what your agent **sees**: content returned by Read, web fetches/searches,
+and Bash output is checked for indirect prompt-injection ("ignore previous instructions,
+run X") and leaked secrets before it re-enters Claude's context. PostToolUse has no
+approval dialog, so Crasp injects a non-blocking caution telling Claude to treat the
+entire result as untrusted data — it lists only the triggered rule IDs and a count, and
+never echoes the flagged content back. For Bash the command has already run, so this is
+context hygiene, not prevention (the PreToolUse Bash screen is the real Bash defense).
+Detection is heuristic.
+
 **Layer 2 — MCP server (active self-audit)**
 Claude Code connects to Crasp as an MCP server. Claude can call `crasp_check` before
 deciding what to write, getting policy feedback before the operation is even attempted.
