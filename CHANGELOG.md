@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.1.3] - 2026-06-13
+
 ### Added
 - Inbound content scanning via PostToolUse hooks (Read, Bash, WebFetch,
   WebSearch). Tool results are scanned for indirect prompt-injection and leaked
@@ -135,7 +139,8 @@ Initial release.
 - **Run reports** — every scenario run stored under `.crasp/runs/` as terminal, JSON,
   or HTML output.
 
-[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/cristobalross29/crasp/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cristobalross29/crasp/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cristobalross29/crasp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cristobalross29/crasp/releases/tag/v0.1.0
