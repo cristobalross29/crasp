@@ -122,6 +122,7 @@ These are all optional. You only need them when you want to inspect or test.
 
 ```sh
 crasp status                    # verify setup is wired correctly
+crasp watch                     # live terminal dashboard of hook decisions (see below)
 crasp hook-log                  # see every operation Crasp has intercepted
 crasp hook-log --summary        # 30-day stats
 crasp scan .                    # scan your project right now against the policy
@@ -129,6 +130,38 @@ crasp scan . --severity high    # only show high and critical matches
 crasp check --staged            # manually check staged files (git hook does this automatically)
 crasp policy list               # show all active rules (built-in + yours)
 ```
+
+## Live dashboard (`crasp watch`)
+
+Run `crasp watch` in a spare terminal to see Crasp's decisions land live as Claude
+Code works; `crasp watch --once --since 1h` prints a session summary. It tails
+`.crasp/events.ndjson` and shows recent hook decisions plus running tallies, with
+zero extra dependencies.
+
+```
+Crasp · watching .crasp/events.ndjson                    Today: 2 events
+────────────────────────────────────────────────────────────────────────
+
+14:02  ✓  Write  src/index.ts          clean
+14:04  🛡  Write  src/secrets.ts        BLOCKED [token-leakage]
+
+────────────────────────────────────────────────────────────────────────
+✓ 1 clean   ⚠ 0 ask   ℹ 0 advisory   🛡 1 blocked   ⚪ 0 exception
+watching · Ctrl-C to exit                      updated 14:05:11
+```
+
+- `--once` renders a single snapshot and exits. Piping the output (any non-TTY
+  invocation, e.g. CI) also prints one snapshot and exits, with a notice on stderr.
+- `--since <spec>` scopes the view to a session. `<spec>` is a positive relative
+  window — `Ns`, `Nm`, `Nh`, or `Nd` (e.g. `30m`, `2h`, `1d`) — or a strict ISO-8601
+  timestamp. An offset-less ISO timestamp (e.g. `2026-06-12T10:00`) is interpreted as
+  UTC, matching the dashboard's UTC clock, so the window is identical on every host.
+  Anything else (`30min`, `garbage`, `0m`, or a duration so large it overflows the
+  date range like `999999999d`) is rejected with an error and a non-zero exit; it never
+  silently shows everything.
+- `--interval <ms>` sets the live poll cadence (default 250ms, floored at 50ms). A
+  bad value warns on stderr and falls back to the default.
+- Times are rendered in UTC for deterministic, host-independent output.
 
 ## Scenario testing (optional)
 
