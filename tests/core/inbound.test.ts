@@ -81,9 +81,8 @@ describe("detectInbound", () => {
     const entropyFinding = f.find((x) => x.ruleId === "secret-generic-entropy");
     // The finding IS returned — but its kind must not be "secret" (to avoid setting sawSecret),
     // OR check.ts filters it from the caution. The kind gate is: only critical severity = "secret".
-    if (entropyFinding) {
-      expect(entropyFinding.kind).not.toBe("secret");
-    }
+    expect(entropyFinding).toBeDefined();
+    expect(entropyFinding!.kind).not.toBe("secret");
     // Either way: no inbound-tool-injection triggered (no URL, no provider secret).
     expect(f.some((x) => x.ruleId === "inbound-tool-injection")).toBe(false);
   });

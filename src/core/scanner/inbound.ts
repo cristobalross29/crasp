@@ -29,6 +29,9 @@ export function detectInbound(text: string, policy: Policy): InboundFinding[] {
       sawSecret = true;
       findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind: "secret" });
     } else {
+      // When a provider secret span also fires secret-generic-entropy, both survive
+      // dedup (different ruleIds); the entropy duplicate is kind "low-confidence-secret"
+      // and is excluded from the inbound caution — behavior is correct.
       findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind: "low-confidence-secret" });
     }
   }
