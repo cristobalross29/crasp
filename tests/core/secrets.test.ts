@@ -536,6 +536,73 @@ describe("Task 8 — precision package (path/ext skip, hash-prefix gate, noise d
   });
 });
 
+describe("Task 9 — secrets.allowlist and inline crasp:allow suppression", () => {
+  const AKIA = "AKIAIOSFODNN7EXAMPLE";
+  const AWS_LINE = `key = "${AKIA}"`;
+
+  it("inline # crasp:allow suppresses the finding on that line", () => {
+    const text = `${AWS_LINE} # crasp:allow`;
+    expect(detectSecrets(text, undefined, []).some(f => f.ruleId === "secret-aws-akia")).toBe(false);
+  });
+
+  it("inline // crasp:allow suppresses the finding on that line", () => {
+    const text = `${AWS_LINE} // crasp:allow`;
+    expect(detectSecrets(text, undefined, []).some(f => f.ruleId === "secret-aws-akia")).toBe(false);
+  });
+
+  it("crasp:allow on a different line does not suppress findings on other lines", () => {
+    const text = `safe line // crasp:allow\n${AWS_LINE}`;
+    expect(detectSecrets(text, undefined, []).some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+
+  it("allowlist literal match suppresses the finding", () => {
+    const findings = detectSecrets(AWS_LINE, undefined, [AKIA]);
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(false);
+  });
+
+  it("allowlist literal non-match does not suppress", () => {
+    const findings = detectSecrets(AWS_LINE, undefined, ["AKIASOMETHINGELSE"]);
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+
+  it("allowlist regex match suppresses the finding", () => {
+    const findings = detectSecrets(AWS_LINE, undefined, ["^AKIA[0-9A-Z]{16}$"]);
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(false);
+  });
+
+  it("allowlist regex non-match does not suppress", () => {
+    const findings = detectSecrets(AWS_LINE, undefined, ["^GHPXXXXXX$"]);
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+
+  it("invalid allowlist regex is treated as literal (no throw)", () => {
+    expect(() => detectSecrets(AWS_LINE, undefined, ["([invalid"])).not.toThrow();
+    // "[invalid" as a literal won't match the AKIA value, so finding is not suppressed
+    expect(detectSecrets(AWS_LINE, undefined, ["([invalid"]).some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+
+  it("allowlist suppresses generic-entropy findings by value", () => {
+    const blob = "Zk9wQ3hLmnP4vR7tY2uX8wB1nM6kJ3hG5fD0sA9qWeRtY";
+    const text = `token = "${blob}"`;
+    const findings = detectSecrets(text, undefined, [blob]);
+    expect(findings.some(f => f.ruleId === "secret-generic-entropy")).toBe(false);
+  });
+
+  it("inline # crasp:allow suppresses generic-entropy findings on that line", () => {
+    const blob = "Zk9wQ3hLmnP4vR7tY2uX8wB1nM6kJ3hG5fD0sA9qWeRtY";
+    const text = `token = "${blob}" # crasp:allow`;
+    expect(detectSecrets(text, undefined, []).some(f => f.ruleId === "secret-generic-entropy")).toBe(false);
+  });
+
+  it("empty allowlist does not suppress anything", () => {
+    expect(detectSecrets(AWS_LINE, undefined, []).some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+
+  it("undefined allowlist (default) does not suppress anything", () => {
+    expect(detectSecrets(AWS_LINE).some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+});
+
 describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
   // Use abc123 as user==password: has a digit, entropy ~2.58 — passes validate.
   // The old indexOf approach returns the USERNAME offset (first occurrence of "abc123"),

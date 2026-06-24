@@ -492,7 +492,12 @@ const BASE32_RE = /^[A-Z2-7]{20,}$/;
 // Anchoring on both makes false-suppression effectively impossible.
 const JWT_IO_ANCHOR = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9l";
 
-function detectGenericEntropy(input: string, filePath?: string): SecretFinding[] {
+function detectGenericEntropy(
+  input: string,
+  filePath?: string,
+  allowMatchers: Array<(value: string) => boolean> = [],
+  hasInlineIgnore: (index: number) => boolean = () => false,
+): SecretFinding[] {
   if (shouldSkipEntropyForPath(filePath)) return [];
 
   // Pre-scan: find all ranges occupied by the jwt.io sample JWT so tokens
@@ -570,6 +575,9 @@ function detectGenericEntropy(input: string, filePath?: string): SecretFinding[]
         if (entropy < 4.5) continue;
       }
 
+      // Suppression: allowlist or inline crasp:allow (same mechanism as provider rules).
+      if (allowMatchers.some((test) => test(token)) || hasInlineIgnore(idx)) continue;
+
       findings.push({ ruleId: "secret-generic-entropy", severity: "low", index: idx, length: token.length });
     }
   } finally {
@@ -580,9 +588,46 @@ function detectGenericEntropy(input: string, filePath?: string): SecretFinding[]
   return findings;
 }
 
-export function detectSecrets(text: string, _filePath?: string): SecretFinding[] {
+// Precedence note:
+// - allowlist/inline-ignore suppress secret findings by VALUE or LINE (this function).
+// - policy `exceptions` are PATH/OP based — they skip sensitive-path dialogs, not
+//   content scanning. These are independent mechanisms that do not interact.
+
+// Compile an allowlist entry as a regex; fall back to literal equality on invalid pattern.
+// Returns a function that tests a raw captured value.
+function compileAllowlistEntry(entry: string): (value: string) => boolean {
+  try {
+    const re = new RegExp(entry);
+    // Verify it's a valid pattern by testing a dummy string (compilation can succeed
+    // but exec can still throw on some engines for pathological patterns).
+    re.test("");
+    return (value) => re.test(value);
+  } catch {
+    return (value) => value === entry;
+  }
+}
+
+// Returns true when the source line ending at or after `index` carries a trailing
+// `# crasp:allow` or `// crasp:allow` comment.
+function lineHasInlineIgnore(input: string, index: number): boolean {
+  const lineStart = input.lastIndexOf("\n", index - 1) + 1;
+  const lineEnd = input.indexOf("\n", index);
+  const line = lineEnd === -1 ? input.slice(lineStart) : input.slice(lineStart, lineEnd);
+  return /(?:#|\/\/)\s*crasp:allow\s*$/.test(line);
+}
+
+export function detectSecrets(text: string, _filePath?: string, allowlist?: string[]): SecretFinding[] {
   const input = text.slice(0, MAX_SECRET_SCAN_LENGTH);
   const findings: SecretFinding[] = [];
+
+  // Pre-compile allowlist matchers once; invalid regex entries become literal comparisons.
+  const allowMatchers = (allowlist ?? []).map(compileAllowlistEntry);
+
+  function isSuppressed(captured: string, index: number): boolean {
+    if (allowMatchers.some((test) => test(captured))) return true;
+    if (lineHasInlineIgnore(input, index)) return true;
+    return false;
+  }
 
   for (const rule of PROVIDER_RULES) {
     // Preserve `d` (hasIndices) and `i` flags from the source regex; always add `g`.
@@ -625,6 +670,11 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
       } else {
         index = m.index + (m[1] !== undefined ? fullMatch.indexOf(captured) : 0);
       }
+
+      // Suppression check: allowlist match or inline crasp:allow on the matched line.
+      // Happens here, before the finding is created, so the raw value is never stored.
+      if (isSuppressed(captured, index)) continue;
+
       findings.push({
         ruleId: rule.ruleId,
         severity: rule.severity,
@@ -640,7 +690,7 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
   // (when needed) is by (ruleId, index) — callers should not assume
   // findings are non-overlapping across rule IDs.
   try {
-    const genericFindings = detectGenericEntropy(input, _filePath);
+    const genericFindings = detectGenericEntropy(input, _filePath, allowMatchers, (idx) => lineHasInlineIgnore(input, idx));
     findings.push(...genericFindings);
   } catch {
     // detectGenericEntropy must not propagate — fail open

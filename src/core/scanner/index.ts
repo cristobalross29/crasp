@@ -118,7 +118,7 @@ export function scanContent(
     }
   }
 
-  for (const f of detectSecrets(content, filePath)) {
+  for (const f of detectSecrets(content, filePath, policy.secrets?.allowlist)) {
     const pos = contentPosition(content, f.index);
     matches.push({
       ruleId: f.ruleId,

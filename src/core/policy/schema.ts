@@ -22,12 +22,17 @@ export const policyExceptionSchema = z
     message: "An exception must have at least one of 'path' or 'command'",
   });
 
+export const policySecretsSchema = z.object({
+  allowlist: z.array(z.string()).optional(),
+});
+
 export const policySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   version: z.string().optional(),
   rules: z.array(policyRuleSchema).default([]),
   exceptions: z.array(policyExceptionSchema).default([]),
+  secrets: policySecretsSchema.optional(),
 });
 
 export type ParsedPolicy = z.infer<typeof policySchema>;
