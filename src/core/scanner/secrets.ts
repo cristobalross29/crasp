@@ -381,6 +381,9 @@ const MAX_TOKENS = 1000;
 
 // Bounded tokenizer — no windowing, tokens longer than MAX_TOKEN_LENGTH are
 // simply not matched (the upper bound is part of the regex quantifier).
+// NOTE: '-' is included in the charset, so a dashed UUID or a "sha512-<hash>"
+// string matches as ONE token (starting at 's' or the first dash-adjacent char),
+// not as separate segments. Noise filters below handle both cases explicitly.
 const TOKEN_RE = /[A-Za-z0-9+/=_-]{20,120}/g;
 
 // Hex-only charset: 0-9 a-f A-F.
@@ -389,18 +392,17 @@ const HEX_RE = /^[0-9a-fA-F]+$/;
 // git SHA (40 or 64 hex chars, exact length match).
 const GIT_SHA_RE = /^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$/;
 
-// UUID v4 dashed form (canonical 8-4-4-4-12, total 36 chars with dashes).
-// The TOKEN_RE won't match dashes embedded in the UUID, but the overall
-// UUID string contains dashes — we check the source text around the match
-// to filter out dash-less UUID hex segments. A simpler guard: if the full
-// token is 32 hex chars AND the surrounding context has UUID dashes, drop it.
-// Easier: just check for exact 32-hex (UUID without dashes) against hex RE.
-// The dashed UUID is handled by the sha512- prefix filter below (the token
-// regex won't capture dashes so a dashed UUID never forms a single token).
+// Canonical dashed UUID: 8-4-4-4-12 hex groups separated by dashes (36 chars total).
+// Because TOKEN_RE includes '-', a dashed UUID matches as one 36-char token.
+// Its Shannon entropy is ~3.4 bits/char — below the 4.5 base64 floor — so it
+// would be dropped anyway, but we add an explicit guard so the behaviour is
+// correct-by-design, not by entropy coincidence.
+const DASHED_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-// lockfile hash prefix: "sha512-" or "sha384-" immediately before the token.
-// We check this against the source text using the match index.
-const LOCKFILE_PREFIX_RE = /sha(?:512|384|256)-$/;
+// Lockfile integrity hashes: TOKEN_RE includes '-', so "sha512-<base64hash>"
+// matches as ONE token whose value starts with "sha512-". The guard therefore
+// tests the TOKEN ITSELF (not the source text before it).
+const LOCKFILE_TOKEN_RE = /^sha(?:512|384|256)-/;
 
 function detectGenericEntropy(input: string): SecretFinding[] {
   const findings: SecretFinding[] = [];
@@ -408,58 +410,61 @@ function detectGenericEntropy(input: string): SecretFinding[] {
   let m: RegExpExecArray | null;
   TOKEN_RE.lastIndex = 0;
 
-  while ((m = TOKEN_RE.exec(input)) !== null) {
-    if (tokenCount >= MAX_TOKENS) break;
-    tokenCount++;
+  try {
+    while ((m = TOKEN_RE.exec(input)) !== null) {
+      if (tokenCount >= MAX_TOKENS) break;
+      tokenCount++;
 
-    const token = m[0];
-    const idx = m.index;
+      const token = m[0];
+      const idx = m.index;
 
-    // Length bounds already enforced by regex quantifier {20,120}, but
-    // double-check to be defensive (belt-and-suspenders).
-    if (token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) continue;
+      // Length bounds already enforced by regex quantifier {20,120}, but
+      // double-check to be defensive (belt-and-suspenders).
+      if (token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) continue;
 
-    // ── Noise filter 1: git SHA (40 or 64 pure hex) ──────────────────────
-    if (GIT_SHA_RE.test(token)) continue;
+      // ── Noise filter 1: git SHA (40 or 64 pure hex) ──────────────────────
+      if (GIT_SHA_RE.test(token)) continue;
 
-    // ── Noise filter 2: UUID hex segment (32 hex chars without dashes) ───
-    // A dashed UUID "550e8400-e29b-41d4-a716-446655440000" contains dashes
-    // which TOKEN_RE skips, yielding segments like "550e8400" (8 chars, too
-    // short) — already excluded by MIN_TOKEN_LENGTH. No extra check needed.
+      // ── Noise filter 2: canonical dashed UUID (36-char 8-4-4-4-12 form) ──
+      // TOKEN_RE includes '-', so the full dashed UUID matches as one token.
+      // Dropped explicitly here; entropy (~3.4) would also drop it, but this
+      // makes the behaviour correct-by-design rather than by coincidence.
+      if (DASHED_UUID_RE.test(token)) continue;
 
-    // ── Noise filter 3: lockfile sha512-/sha384- hash prefix ─────────────
-    if (idx >= 7) {
-      const prefix = input.slice(idx - 7, idx);
-      if (LOCKFILE_PREFIX_RE.test(prefix)) continue;
-    }
+      // ── Noise filter 3: lockfile sha512-/sha384-/sha256- hash ────────────
+      // TOKEN_RE includes '-', so "sha512-<base64>" is ONE token starting with
+      // "sha512-". Check the token itself, not the source text before it.
+      if (LOCKFILE_TOKEN_RE.test(token)) continue;
 
-    // ── Charset classification + entropy floor ───────────────────────────
-    const isHex = HEX_RE.test(token);
-    const entropy = shannonEntropy(token);
+      // ── Charset classification + entropy floor ───────────────────────────
+      const isHex = HEX_RE.test(token);
+      const entropy = shannonEntropy(token);
 
-    if (isHex) {
-      // Hex tokens: floor 3.0 bits/char, plus numeric penalty.
-      // Count digit chars in a single pass (no lookahead).
-      let digitCount = 0;
-      for (let i = 0; i < token.length; i++) {
-        const c = token.charCodeAt(i);
-        if (c >= 48 && c <= 57) digitCount++;
+      if (isHex) {
+        // Hex tokens: floor 3.0 bits/char, plus numeric penalty.
+        // Count digit chars in a single pass (no lookahead).
+        let digitCount = 0;
+        for (let i = 0; i < token.length; i++) {
+          const c = token.charCodeAt(i);
+          if (c >= 48 && c <= 57) digitCount++;
+        }
+        const digitRatio = digitCount / token.length;
+        // Penalise heavily numeric hex strings (e.g. "12345678901234567890"
+        // has high digit ratio but low information density vs a real key).
+        const penalisedEntropy = entropy - digitRatio * 0.5;
+        if (penalisedEntropy < 3.0) continue;
+      } else {
+        // Base64/mixed charset: floor 4.5 bits/char.
+        if (entropy < 4.5) continue;
       }
-      const digitRatio = digitCount / token.length;
-      // Penalise heavily numeric hex strings (e.g. "12345678901234567890"
-      // has high digit ratio but low information density vs a real key).
-      const penalisedEntropy = entropy - digitRatio * 0.5;
-      if (penalisedEntropy < 3.0) continue;
-    } else {
-      // Base64/mixed charset: floor 4.5 bits/char.
-      if (entropy < 4.5) continue;
+
+      findings.push({ ruleId: "secret-generic-entropy", severity: "low", index: idx, length: token.length });
     }
-
-    findings.push({ ruleId: "secret-generic-entropy", severity: "low", index: idx, length: token.length });
+  } finally {
+    // Always reset lastIndex — a mid-loop throw would otherwise leave TOKEN_RE
+    // in a dirty state that corrupts the next call's scan position.
+    TOKEN_RE.lastIndex = 0;
   }
-
-  // Reset lastIndex so subsequent calls are clean.
-  TOKEN_RE.lastIndex = 0;
   return findings;
 }
 
@@ -517,6 +522,11 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
     }
   }
 
+  // NOTE: a provider-matched high-entropy span may also yield a
+  // secret-generic-entropy:low finding for the same byte range.
+  // The critical/high provider finding dominates the action path; dedup
+  // (when needed) is by (ruleId, index) — callers should not assume
+  // findings are non-overlapping across rule IDs.
   try {
     const genericFindings = detectGenericEntropy(input);
     findings.push(...genericFindings);

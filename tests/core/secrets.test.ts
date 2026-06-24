@@ -357,6 +357,25 @@ describe("generic entropy detector (secret-generic-entropy)", () => {
     expect(() => detectSecrets(("aA1 ".repeat(64000)))).not.toThrow();
     expect(() => detectSecrets("x".repeat(2_000_000))).not.toThrow();
   });
+
+  // Fix 1: realistic high-entropy lockfile hash must not fire
+  it("does NOT flag a realistic high-entropy sha512 lockfile hash", () => {
+    // This token starts with "sha512-" followed by a real base64 hash — entropy well above 4.5.
+    // The old prefix-before-token guard failed because TOKEN_RE includes '-', so the entire
+    // "sha512-<hash>" string matches as one token starting at 's', not at the base64 content.
+    const lockfileHash = "sha512-Zk9wQ3hLmnP4vR7tY2uX8wB1nM6kJ3hG5fD0sA9qWeRtYuIoPasSdFgHjKlZxCvBnM+Qw==";
+    expect(
+      detectSecrets(`"integrity": "${lockfileHash}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  // Fix 2: canonical dashed UUID must not fire (explicit design guard, not entropy coincidence)
+  it("does NOT flag a dashed UUID (explicit UUID guard, not entropy coincidence)", () => {
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    expect(
+      detectSecrets(`id = "${uuid}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
 });
 
 describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
