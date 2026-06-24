@@ -7,6 +7,40 @@ import type {
   ScanSummary,
   Severity
 } from "../../types/index.js";
+import { detectSecrets, maskSpan, maskSpanInLine } from "./secrets.js";
+
+const RULE_NAMES: Record<string, string> = {
+  "secret-aws-akia": "AWS access key",
+  "secret-anthropic": "Anthropic API key",
+  "secret-openai": "OpenAI API key",
+  "secret-github": "GitHub token",
+  "secret-gitlab": "GitLab personal access token",
+  "secret-stripe": "Stripe secret key",
+  "secret-stripe-webhook": "Stripe webhook secret",
+  "secret-google-api": "Google API key",
+  "secret-google-oauth": "Google OAuth credential",
+  "secret-azure": "Azure client secret",
+  "secret-slack": "Slack token",
+  "secret-slack-webhook": "Slack webhook URL",
+  "secret-sendgrid": "SendGrid API key",
+  "secret-twilio": "Twilio credential",
+  "secret-huggingface": "HuggingFace token",
+  "secret-npm": "npm access token",
+  "secret-pypi": "PyPI token",
+  "secret-digitalocean": "DigitalOcean token",
+  "secret-datadog": "Datadog API key",
+  "secret-cloudflare": "Cloudflare token",
+  "secret-shopify": "Shopify access token",
+  "secret-square": "Square access token",
+  "secret-db-conn": "Database connection string with credentials",
+  "secret-url-creds": "URL-embedded credentials",
+  "secret-pem": "PEM/SSH private key",
+  "secret-jwt": "JSON Web Token",
+};
+
+function ruleNameFor(ruleId: string): string {
+  return RULE_NAMES[ruleId] ?? ruleId;
+}
 
 export interface ScanDirectoryOptions {
   recursive?: boolean;
@@ -82,6 +116,19 @@ export function scanContent(
         pattern.lastIndex += 1;
       }
     }
+  }
+
+  for (const f of detectSecrets(content, filePath)) {
+    const pos = contentPosition(content, f.index);
+    matches.push({
+      ruleId: f.ruleId,
+      ruleName: ruleNameFor(f.ruleId),
+      severity: f.severity,
+      line: pos.line,
+      column: pos.column,
+      match: maskSpan(content, f.index, f.length),
+      context: maskSpanInLine(content, f.index, f.length, pos.line - 1),
+    });
   }
 
   return {
