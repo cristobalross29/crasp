@@ -69,7 +69,33 @@ Always active. No configuration needed.
 
 | Rule | Severity | What it catches |
 | --- | --- | --- |
-| `token-leakage` | critical | API keys, `sk-*`, `github_pat_*`, bearer tokens |
+| `secret-aws-akia` | critical | AWS access key IDs (`AKIA…`) |
+| `secret-anthropic` | critical | Anthropic API keys (`sk-ant-…`) |
+| `secret-openai` | critical | OpenAI keys (`sk-proj-…T3BlbkFJ…`, legacy `sk-…`) |
+| `secret-github` | critical | GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `github_pat_`) |
+| `secret-gitlab` | critical | GitLab personal access tokens (`glpat-…`) |
+| `secret-stripe` | critical | Stripe secret/restricted keys (`sk_live_`, `rk_…`) |
+| `secret-stripe-webhook` | critical | Stripe webhook secrets (`whsec_…`) |
+| `secret-google-api` | critical | Google API keys (`AIza…`) |
+| `secret-google-oauth` | critical | Google OAuth client secrets and refresh tokens |
+| `secret-azure` | critical | Azure client secrets (`Q~…`) |
+| `secret-slack` | critical | Slack bot/user/app tokens (`xox…`) |
+| `secret-slack-webhook` | critical | Slack incoming webhook URLs |
+| `secret-sendgrid` | critical | SendGrid API keys (`SG.…`) |
+| `secret-twilio` | critical | Twilio SIDs/keys (`AC…`, `SK…` 32 hex) |
+| `secret-huggingface` | critical | HuggingFace tokens (`hf_…`) |
+| `secret-npm` | critical | npm automation tokens (`npm_…`) |
+| `secret-pypi` | critical | PyPI API tokens (`pypi-…`) |
+| `secret-digitalocean` | critical | DigitalOcean personal access tokens (`dop_v1_…`) |
+| `secret-datadog` | critical | Datadog API/App keys (`DD` + 32 hex) |
+| `secret-cloudflare` | critical | Cloudflare tokens (`cf_…`) |
+| `secret-shopify` | critical | Shopify access tokens (`shpat_…`) |
+| `secret-square` | critical | Square access tokens (`EAAAl…`) |
+| `secret-db-conn` | critical | Database connection strings with embedded passwords |
+| `secret-url-creds` | critical | Generic URL-embedded credentials (`scheme://user:pass@host`) |
+| `secret-pem` | critical | PEM/SSH private keys |
+| `secret-jwt` | medium | JSON Web Tokens (advisory) |
+| `secret-generic-entropy` | low | Unknown high-entropy tokens (advisory) |
 | `credential-exfiltration` | critical | Instructions to steal or dump credentials |
 | `prompt-injection` | high | "Ignore previous instructions" patterns |
 | `ssrf` | high | Cloud metadata endpoints (169.254.169.254, etc.) |
@@ -143,7 +169,7 @@ Crasp · watching .crasp/events.ndjson                    Today: 2 events
 ────────────────────────────────────────────────────────────────────────
 
 14:02  ✓  Write  src/index.ts          clean
-14:04  🛡  Write  src/secrets.ts        BLOCKED [token-leakage]
+14:04  🛡  Write  src/secrets.ts        BLOCKED [secret-openai]
 
 ────────────────────────────────────────────────────────────────────────
 ✓ 1 clean   ⚠ 0 ask   ℹ 0 advisory   🛡 1 blocked   ⚪ 0 exception
