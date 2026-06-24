@@ -5,8 +5,8 @@ import path from "node:path";
 const CLI = path.resolve("dist/index.js");
 
 describe("policy check — secret redaction", () => {
-  it("redacts token-leakage matches and does not print the raw secret", () => {
-    const token = "sk-" + "A".repeat(30);
+  it("redacts secret matches and does not print the raw secret", () => {
+    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
     const result = spawnSync("node", [CLI, "policy", "check", token], {
       encoding: "utf8",
     });

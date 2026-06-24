@@ -6,7 +6,7 @@ const policy = mergeWithBuiltin(undefined);
 
 describe("detectInbound", () => {
   it("flags a leaked secret in inbound content as kind 'secret'", () => {
-    const f = detectInbound('config: api_key = "sk-proj-ABCDEF1234567890abcdefGHIJ"', policy);
+    const f = detectInbound("config: aws_access_key_id = AKIAIOSFODNN7EXAMPLE", policy);
     expect(f.some((x) => x.kind === "secret")).toBe(true);
   });
 

@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { redactCommand } from "../../src/core/scanner/redact.js";
 import { isSecretRule, SECRET_RULE_IDS } from "../../src/core/scanner/secret-rule-ids.js";
 
-it("treats token-leakage and secret-* ids as secret rules", () => {
-  expect(isSecretRule("token-leakage")).toBe(true);
+it("treats secret-* ids as secret rules; token-leakage is retired", () => {
+  expect(isSecretRule("token-leakage")).toBe(false);
   expect(isSecretRule("secret-aws-akia")).toBe(true);
+  expect(isSecretRule("secret-openai")).toBe(true);
   expect(isSecretRule("prompt-injection")).toBe(false);
 });
 

@@ -13,14 +13,14 @@ describe("check --stdin", () => {
     expect(result.status).toBe(0);
   });
 
-  it("exits 1 and writes to stderr for a critical token-leakage violation", () => {
+  it("exits 1 and writes to stderr for a critical secret violation", () => {
     const result = spawnSync("node", [CLI, "check", "--stdin"], {
       input: "SECRET_KEY=sk-abcdefghijklmnopqrstuvwxyz123456",
       encoding: "utf8",
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("BLOCKED");
-    expect(result.stderr).toContain("token-leakage");
+    expect(result.stderr).toMatch(/secret-/);
     expect(result.stderr).toContain("critical");
   });
 
