@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runGuarded } from "../../src/cli/commands/check.js";
 
 const CLI = path.resolve("dist/index.js");
 
@@ -524,5 +525,14 @@ describe("Bash hook input", () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("runGuarded", () => {
+  it("swallows throws and exits 0", async () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    await runGuarded(async () => { throw new Error("boom"); });
+    expect(exit).toHaveBeenCalledWith(0);
+    exit.mockRestore();
   });
 });
