@@ -20,9 +20,17 @@ export function detectInbound(text: string, policy: Policy): InboundFinding[] {
 
   let sawSecret = false;
   for (const m of scanContent(text, policy).matches) {
-    const kind = INJECTION_RULE_IDS.has(m.ruleId) ? "injection" : "secret";
-    if (kind === "secret") sawSecret = true;
-    findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind });
+    if (INJECTION_RULE_IDS.has(m.ruleId)) {
+      findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind: "injection" });
+    } else if (m.severity === "critical") {
+      // Only provider-tier (critical) secrets set sawSecret and participate in the
+      // inbound co-occurrence gate. Low/medium hits (e.g. secret-generic-entropy)
+      // are returned as low-confidence-secret so the caution path can exclude them.
+      sawSecret = true;
+      findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind: "secret" });
+    } else {
+      findings.push({ ruleId: m.ruleId, severity: m.severity, match: m.match, kind: "low-confidence-secret" });
+    }
   }
 
   // D6 co-occurrence gate: a bare tool-call instruction is too common in docs to

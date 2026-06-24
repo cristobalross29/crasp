@@ -449,7 +449,12 @@ async function runInboundHookCheck(toolName: string): Promise<void> {
 
     const findings = detectInbound(text, policy);
 
-    if (findings.length === 0) {
+    // R6: low-confidence-secret findings (e.g. secret-generic-entropy, severity low/medium)
+    // must not trigger the untrusted-data caution on their own. Only injection and
+    // provider-tier (critical) secret findings warrant the caution.
+    const cautionFindings = findings.filter((f) => f.kind !== "low-confidence-secret");
+
+    if (cautionFindings.length === 0) {
       await appendHookLogEntry(target, toolName as HookLogEntry["tool"], "clean", undefined, undefined, undefined, "post");
       process.exit(0);
     }
@@ -458,7 +463,7 @@ async function runInboundHookCheck(toolName: string): Promise<void> {
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: buildInboundMessage(toolName, findings),
+          additionalContext: buildInboundMessage(toolName, cautionFindings),
         },
       })
     );
@@ -467,7 +472,7 @@ async function runInboundHookCheck(toolName: string): Promise<void> {
       toolName as HookLogEntry["tool"],
       "inbound-flagged",
       undefined,
-      findings[0].ruleId,
+      cautionFindings[0].ruleId,
       undefined,
       "post"
     );
