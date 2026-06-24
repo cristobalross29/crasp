@@ -3,6 +3,7 @@ import {
   maskSpan,
   maskSpanInLine,
   detectSecrets,
+  dedupFindings,
 } from "../../src/core/scanner/secrets.js";
 
 describe("maskSpan", () => {
@@ -600,6 +601,79 @@ describe("Task 9 — secrets.allowlist and inline crasp:allow suppression", () =
 
   it("undefined allowlist (default) does not suppress anything", () => {
     expect(detectSecrets(AWS_LINE).some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+  });
+});
+
+describe("Task 11 — dedup by (ruleId, index)", () => {
+  // ── Test 1: same-ruleId rules matching the same span ─────────────────────
+  // The PROVIDER_RULES table has pairs sharing a ruleId (secret-openai,
+  // secret-github, secret-google-oauth). Two different rules with the same
+  // ruleId cannot currently produce a natural collision, so we test the dedup
+  // at the helper level: inject a crafted pre-findings array (using the
+  // exported dedupFindings helper) where two entries share (ruleId, index).
+  it("dedupFindings keeps first finding and drops later duplicate at same (ruleId, index)", () => {
+    const a = { ruleId: "secret-openai", severity: "critical" as const, index: 10, length: 40 };
+    const b = { ruleId: "secret-openai", severity: "critical" as const, index: 10, length: 40 };
+    const c = { ruleId: "secret-openai", severity: "critical" as const, index: 50, length: 40 };
+    const result = dedupFindings([a, b, c]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(a);
+    expect(result[1]).toBe(c);
+  });
+
+  // ── Test 2: two DIFFERENT real secrets that mask identically are BOTH kept ──
+  // Born-redacted fixed masks like "AKIA...[REDACTED]...IPLE" can collide across
+  // unrelated real secrets with the same prefix/suffix pattern. The dedup key
+  // is (ruleId, index) — NOT masked value — so both findings survive.
+  it("keeps two different real secrets that happen to mask identically (different index → different key)", () => {
+    // Two identical AKIA keys at different offsets — same mask but different index.
+    const text = "key1=AKIAIOSFODNN7EXAMPLE key2=AKIAIOSFODNN7EXAMPLE";
+    const findings = detectSecrets(text).filter(f => f.ruleId === "secret-aws-akia");
+    // Both occurrences must be found (different index → different (ruleId, index) key).
+    expect(findings).toHaveLength(2);
+    expect(findings[0].index).not.toBe(findings[1].index);
+  });
+
+  // ── Test 3: provider + generic-entropy at the same span are both kept ───────
+  // A high-entropy token matched by both a provider rule and the generic detector
+  // has DIFFERENT ruleIds — they must both survive dedup.
+  it("keeps provider finding and generic-entropy finding at the same span (different ruleId)", () => {
+    // An AWS AKIA key is also high-entropy — the generic detector may flag it too.
+    // We verify that if both fire, dedup preserves both (different ruleId → different key).
+    const text = 'key = "AKIAIOSFODNN7EXAMPLE"';
+    const findings = detectSecrets(text);
+    const awsFinding = findings.find(f => f.ruleId === "secret-aws-akia");
+    const genericFinding = findings.find(f => f.ruleId === "secret-generic-entropy");
+    // The AWS AKIA rule always fires; if generic also fires at the same offset,
+    // both must be present (not merged) because they have different ruleIds.
+    expect(awsFinding).toBeDefined();
+    if (genericFinding && genericFinding.index === awsFinding?.index) {
+      // Both present at same index — different ruleId means NOT deduped.
+      const awsCount = findings.filter(f => f.ruleId === "secret-aws-akia").length;
+      const genericCount = findings.filter(f => f.ruleId === "secret-generic-entropy" && f.index === genericFinding.index).length;
+      expect(awsCount).toBe(1);
+      expect(genericCount).toBe(1);
+    }
+  });
+
+  // ── Test 4: dedup does NOT use masked value as key ───────────────────────
+  // The dedup key is (ruleId, index), never the masked value.
+  it("dedupFindings deduplicates by (ruleId, index) not by masked value", () => {
+    // Two findings with same ruleId and same index but different length —
+    // same (ruleId, index) key → second is dropped.
+    const a = { ruleId: "secret-github", severity: "critical" as const, index: 5, length: 40 };
+    const b = { ruleId: "secret-github", severity: "critical" as const, index: 5, length: 43 };
+    const result = dedupFindings([a, b]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(a);
+  });
+
+  // ── Test 5: different ruleIds at same index are NOT deduped ──────────────
+  it("dedupFindings keeps findings with different ruleIds at the same index", () => {
+    const a = { ruleId: "secret-aws-akia", severity: "critical" as const, index: 0, length: 20 };
+    const b = { ruleId: "secret-generic-entropy", severity: "low" as const, index: 0, length: 20 };
+    const result = dedupFindings([a, b]);
+    expect(result).toHaveLength(2);
   });
 });
 

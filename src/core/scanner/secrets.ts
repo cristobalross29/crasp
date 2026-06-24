@@ -616,6 +616,24 @@ function lineHasInlineIgnore(input: string, index: number): boolean {
   return /(?:#|\/\/)\s*crasp:allow\s*$/.test(line);
 }
 
+// Dedup findings by (ruleId, index) — NOT by masked value.
+// Born-redacted fixed masks can collide across DIFFERENT real secrets, so
+// value-based dedup would silently drop legitimate findings. Keep FIRST match
+// per (ruleId, index) key; drop later duplicates at the same offset.
+// Different ruleIds at the same span are intentionally kept (e.g. a provider
+// finding + secret-generic-entropy are two independent signals).
+export function dedupFindings(findings: SecretFinding[]): SecretFinding[] {
+  const seen = new Set<string>();
+  const result: SecretFinding[] = [];
+  for (const f of findings) {
+    const key = `${f.ruleId}:${f.index}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(f);
+  }
+  return result;
+}
+
 export function detectSecrets(text: string, _filePath?: string, allowlist?: string[]): SecretFinding[] {
   const input = text.slice(0, MAX_SECRET_SCAN_LENGTH);
   const findings: SecretFinding[] = [];
@@ -684,11 +702,6 @@ export function detectSecrets(text: string, _filePath?: string, allowlist?: stri
     }
   }
 
-  // NOTE: a provider-matched high-entropy span may also yield a
-  // secret-generic-entropy:low finding for the same byte range.
-  // The critical/high provider finding dominates the action path; dedup
-  // (when needed) is by (ruleId, index) — callers should not assume
-  // findings are non-overlapping across rule IDs.
   try {
     const genericFindings = detectGenericEntropy(input, _filePath, allowMatchers, (idx) => lineHasInlineIgnore(input, idx));
     findings.push(...genericFindings);
@@ -696,5 +709,5 @@ export function detectSecrets(text: string, _filePath?: string, allowlist?: stri
     // detectGenericEntropy must not propagate — fail open
   }
 
-  return findings;
+  return dedupFindings(findings);
 }
