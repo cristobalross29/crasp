@@ -1,6 +1,7 @@
 import Table from "cli-table3";
 import { summarizeScanResults } from "../core/scanner/index.js";
 import { redactSensitiveScanResults } from "../core/scanner/redact.js";
+import { isSecretRule } from "../core/scanner/secret-rule-ids.js";
 import type { FileScanResult } from "../types/index.js";
 
 export { redactSensitiveScanResults };
@@ -71,7 +72,7 @@ export function printTerminalScanResults(
 }
 
 function formatMatch(ruleId: string, value: string): string {
-  if (ruleId === "token-leakage") {
+  if (isSecretRule(ruleId)) {
     const normalized = value.replace(/\s+/g, " ").trim();
     const assignment = normalized.match(/^([^=:]+[=:]\s*["']?)(.+?)(["']?)$/);
     if (assignment) {

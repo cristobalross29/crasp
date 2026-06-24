@@ -4,6 +4,8 @@ import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import { scanContent } from "../../core/scanner/index.js";
+import { redactSensitiveMatch } from "../../core/scanner/redact.js";
+import { isSecretRule } from "../../core/scanner/secret-rule-ids.js";
 import type { Policy } from "../../types/index.js";
 
 export async function policyCommand(
@@ -68,7 +70,10 @@ function checkText(policy: Policy, text: string): void {
   });
 
   for (const match of result.matches) {
-    table.push([match.ruleId, match.severity, match.match]);
+    const displayMatch = isSecretRule(match.ruleId)
+      ? redactSensitiveMatch(match).match
+      : match.match;
+    table.push([match.ruleId, match.severity, displayMatch]);
   }
 
   console.log(table.toString());
