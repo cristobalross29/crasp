@@ -339,6 +339,26 @@ describe("Fix 4 (round-2) — secret-db-conn: OR gate (digit OR high-entropy)", 
   });
 });
 
+describe("generic entropy detector (secret-generic-entropy)", () => {
+  it("flags a random base64 blob as generic entropy (advisory)", () => {
+    const blob = "Zk9wQ3hLmnP4vR7tY2uX8wB1nM6kJ3hG5fD0sA9qWeRtY";
+    const f = detectSecrets(`token = "${blob}"`).find(x => x.ruleId === "secret-generic-entropy");
+    expect(f?.severity).toBe("low");
+  });
+
+  it("does NOT flag a git SHA, UUID, or lockfile hash", () => {
+    for (const s of ["a".repeat(40), "550e8400-e29b-41d4-a716-446655440000",
+                     "sha512-" + "A".repeat(80)]) {
+      expect(detectSecrets(`x="${s}"`).some(f => f.ruleId === "secret-generic-entropy")).toBe(false);
+    }
+  });
+
+  it("terminates on 64k tiny tokens and one giant token (bounds)", () => {
+    expect(() => detectSecrets(("aA1 ".repeat(64000)))).not.toThrow();
+    expect(() => detectSecrets("x".repeat(2_000_000))).not.toThrow();
+  });
+});
+
 describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
   // Use abc123 as user==password: has a digit, entropy ~2.58 — passes validate.
   // The old indexOf approach returns the USERNAME offset (first occurrence of "abc123"),

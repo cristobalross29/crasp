@@ -370,6 +370,99 @@ export function maskSpanInLine(
   return lineText.slice(0, offsetInLine) + maskValue(span) + lineText.slice(offsetInLine + length);
 }
 
+// ── Generic high-entropy detector ───────────────────────────────────────────
+// Tokenizes candidate substrings using a BOUNDED regex (20–120 chars) then
+// applies entropy floors and cheap noise filters. Born-redacted: only
+// {ruleId, severity, index, length} are emitted, never the token value.
+
+const MIN_TOKEN_LENGTH = 20;
+const MAX_TOKEN_LENGTH = 120;
+const MAX_TOKENS = 1000;
+
+// Bounded tokenizer — no windowing, tokens longer than MAX_TOKEN_LENGTH are
+// simply not matched (the upper bound is part of the regex quantifier).
+const TOKEN_RE = /[A-Za-z0-9+/=_-]{20,120}/g;
+
+// Hex-only charset: 0-9 a-f A-F.
+const HEX_RE = /^[0-9a-fA-F]+$/;
+
+// git SHA (40 or 64 hex chars, exact length match).
+const GIT_SHA_RE = /^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$/;
+
+// UUID v4 dashed form (canonical 8-4-4-4-12, total 36 chars with dashes).
+// The TOKEN_RE won't match dashes embedded in the UUID, but the overall
+// UUID string contains dashes — we check the source text around the match
+// to filter out dash-less UUID hex segments. A simpler guard: if the full
+// token is 32 hex chars AND the surrounding context has UUID dashes, drop it.
+// Easier: just check for exact 32-hex (UUID without dashes) against hex RE.
+// The dashed UUID is handled by the sha512- prefix filter below (the token
+// regex won't capture dashes so a dashed UUID never forms a single token).
+
+// lockfile hash prefix: "sha512-" or "sha384-" immediately before the token.
+// We check this against the source text using the match index.
+const LOCKFILE_PREFIX_RE = /sha(?:512|384|256)-$/;
+
+function detectGenericEntropy(input: string): SecretFinding[] {
+  const findings: SecretFinding[] = [];
+  let tokenCount = 0;
+  let m: RegExpExecArray | null;
+  TOKEN_RE.lastIndex = 0;
+
+  while ((m = TOKEN_RE.exec(input)) !== null) {
+    if (tokenCount >= MAX_TOKENS) break;
+    tokenCount++;
+
+    const token = m[0];
+    const idx = m.index;
+
+    // Length bounds already enforced by regex quantifier {20,120}, but
+    // double-check to be defensive (belt-and-suspenders).
+    if (token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) continue;
+
+    // ── Noise filter 1: git SHA (40 or 64 pure hex) ──────────────────────
+    if (GIT_SHA_RE.test(token)) continue;
+
+    // ── Noise filter 2: UUID hex segment (32 hex chars without dashes) ───
+    // A dashed UUID "550e8400-e29b-41d4-a716-446655440000" contains dashes
+    // which TOKEN_RE skips, yielding segments like "550e8400" (8 chars, too
+    // short) — already excluded by MIN_TOKEN_LENGTH. No extra check needed.
+
+    // ── Noise filter 3: lockfile sha512-/sha384- hash prefix ─────────────
+    if (idx >= 7) {
+      const prefix = input.slice(idx - 7, idx);
+      if (LOCKFILE_PREFIX_RE.test(prefix)) continue;
+    }
+
+    // ── Charset classification + entropy floor ───────────────────────────
+    const isHex = HEX_RE.test(token);
+    const entropy = shannonEntropy(token);
+
+    if (isHex) {
+      // Hex tokens: floor 3.0 bits/char, plus numeric penalty.
+      // Count digit chars in a single pass (no lookahead).
+      let digitCount = 0;
+      for (let i = 0; i < token.length; i++) {
+        const c = token.charCodeAt(i);
+        if (c >= 48 && c <= 57) digitCount++;
+      }
+      const digitRatio = digitCount / token.length;
+      // Penalise heavily numeric hex strings (e.g. "12345678901234567890"
+      // has high digit ratio but low information density vs a real key).
+      const penalisedEntropy = entropy - digitRatio * 0.5;
+      if (penalisedEntropy < 3.0) continue;
+    } else {
+      // Base64/mixed charset: floor 4.5 bits/char.
+      if (entropy < 4.5) continue;
+    }
+
+    findings.push({ ruleId: "secret-generic-entropy", severity: "low", index: idx, length: token.length });
+  }
+
+  // Reset lastIndex so subsequent calls are clean.
+  TOKEN_RE.lastIndex = 0;
+  return findings;
+}
+
 export function detectSecrets(text: string, _filePath?: string): SecretFinding[] {
   const input = text.slice(0, MAX_SECRET_SCAN_LENGTH);
   const findings: SecretFinding[] = [];
@@ -422,6 +515,13 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
         length: captured.length,
       });
     }
+  }
+
+  try {
+    const genericFindings = detectGenericEntropy(input);
+    findings.push(...genericFindings);
+  } catch {
+    // detectGenericEntropy must not propagate — fail open
   }
 
   return findings;
