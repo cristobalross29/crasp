@@ -14,6 +14,8 @@ export const MAX_SECRET_SCAN_LENGTH = 1_000_000;
 interface ProviderRule {
   ruleId: string;
   severity: Severity;
+  // Regexes MUST use the `d` flag (hasIndices) so m.indices[1] gives the
+  // exact group-1 offset. The exec loop adds `g` automatically.
   regex: RegExp;
   entropyFloor?: number;
   validate?: (captured: string) => boolean;
@@ -73,11 +75,19 @@ const PROVIDER_RULES: ProviderRule[] = [
     entropyFloor: 3.5,
   },
 
-  // ── OpenAI (T3BlbkFJ marker = base64 of "OpenAI") ───────────────────────────
+  // ── OpenAI ───────────────────────────────────────────────────────────────────
+  // Current format: proj/svcacct/admin variants MUST contain the T3BlbkFJ marker
+  // (base64("OpenAI")) — near-zero FP at the deny tier.
   {
     ruleId: "secret-openai",
     severity: "critical",
-    regex: /(sk-(?:proj-|[a-zA-Z0-9]{20}T3BlbkFJ)[A-Za-z0-9_\-]{20,80})/,
+    regex: /(sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{58,74}T3BlbkFJ[A-Za-z0-9_\-]{58,74})/d,
+  },
+  // Legacy format: sk- followed by 20+ alphanumeric chars (no proj/svcacct/admin prefix)
+  {
+    ruleId: "secret-openai",
+    severity: "critical",
+    regex: /(sk-(?!(?:proj|svcacct|admin)-)(?!ant-)[A-Za-z0-9]{20,})/d,
     entropyFloor: 3.0,
   },
 
@@ -263,11 +273,34 @@ const PROVIDER_RULES: ProviderRule[] = [
     severity: "critical",
     // Structural rule — embedded password after the colon before @
     // postgres/mysql/mongodb/redis/amqp/mssql :// user : password @ host
-    regex: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^:/\s]+:([^@/\s]{3,})@[^\s/]+/i,
-    // Require at least one digit in the password to avoid "user:password@" placeholders
+    // `d` flag gives m.indices[1] = exact [start,end] of the password group,
+    // fixing the indexOf offset bug when username == password.
+    regex: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^:/\s]+:([^@/\s]{3,})@[^\s/]+/id,
+    // Require a digit AND entropy >= 2.5 to reject common word-only placeholders
+    // like "password", "changeme", "PLACEHOLDER" (no digit fails immediately).
     validate(captured: string): boolean {
       try {
-        return /\d/.test(captured) || shannonEntropy(captured) >= 3.0;
+        return /\d/.test(captured) && shannonEntropy(captured) >= 2.5;
+      } catch {
+        return false;
+      }
+    },
+  },
+  // ── Generic URL-embedded credentials (any scheme except named DB schemes) ────
+  {
+    ruleId: "secret-url-creds",
+    severity: "critical",
+    // Matches scheme://user:password@host for any scheme NOT already caught by
+    // secret-db-conn (postgres/mysql/mongodb/redis/amqp/mssql).
+    // `d` flag for accurate group-1 offset. Negative lookahead excludes DB schemes.
+    // (?<![a-zA-Z]) ensures the match starts at a token boundary, so
+    // "postgres://..." cannot be matched starting at the 'o' (skipping 'p').
+    regex: /(?<![a-zA-Z])(?!(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/)[a-zA-Z][a-zA-Z0-9+\-.]{1,30}:\/\/[^:/\s@]{1,100}:([^@/\s]{3,100})@[^\s/]+/d,
+    // Require a digit AND entropy >= 2.5 to reject common word-only placeholders
+    // like "password", "changeme", "PLACEHOLDER" (no digit fails immediately).
+    validate(captured: string): boolean {
+      try {
+        return /\d/.test(captured) && shannonEntropy(captured) >= 2.5;
       } catch {
         return false;
       }
@@ -324,7 +357,10 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
   const findings: SecretFinding[] = [];
 
   for (const rule of PROVIDER_RULES) {
-    const gRegex = new RegExp(rule.regex.source, rule.regex.flags.includes("i") ? "gi" : "g");
+    // Preserve `d` (hasIndices) and `i` flags from the source regex; always add `g`.
+    const srcFlags = rule.regex.flags;
+    const addedFlags = "g" + (srcFlags.includes("i") ? "i" : "") + (srcFlags.includes("d") ? "d" : "");
+    const gRegex = new RegExp(rule.regex.source, addedFlags);
     let m: RegExpExecArray | null;
     while ((m = gRegex.exec(input)) !== null) {
       // group 1 is the secret value; group 0 is the full match
@@ -351,7 +387,16 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
         if (!ok) continue;
       }
 
-      const index = m.index + (m[1] !== undefined ? fullMatch.indexOf(captured) : 0);
+      // Use m.indices[1] (from `d` flag) for the exact group-1 start offset.
+      // This is correct even when the captured group text also appears earlier
+      // in the full match (e.g. redis://xyz:xyz@h — username == password).
+      // Fall back to indexOf for regexes that don't carry the `d` flag.
+      let index: number;
+      if (m[1] !== undefined && (m as RegExpExecArray & { indices?: [number, number][] }).indices?.[1] !== undefined) {
+        index = ((m as RegExpExecArray & { indices: [number, number][] }).indices[1])[0];
+      } else {
+        index = m.index + (m[1] !== undefined ? fullMatch.indexOf(captured) : 0);
+      }
       findings.push({
         ruleId: rule.ruleId,
         severity: rule.severity,

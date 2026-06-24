@@ -98,8 +98,8 @@ const POS: Array<[string, string]> = [
   ["secret-google-api", "AIza" + "aB3dEfGhIjKlMnOpQrStUvWxYz0123456Xy"],
   // DB connection string with embedded password
   ["secret-db-conn", "postgres://user:p4ssw0rd@db.internal:5432/app"],
-  // OpenAI — T3BlbkFJ marker (base64 of "OpenAI")
-  ["secret-openai", "sk-proj-" + "aB3dEfGhIjT3BlbkFJKlMnOpQrStUvWxYz0123456789aB3d"],
+  // OpenAI proj — T3BlbkFJ marker (base64 of "OpenAI"), 58 chars on each side
+  ["secret-openai", "sk-proj-" + "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789aB3dEfGhIjKlMnOpQrStUvW" + "T3BlbkFJ" + "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789aB3dEfGhIjKlMnOpQrStUvW"],
   // GitHub PAT (gho_ prefix)
   ["secret-github", "gho_" + "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789"],
   // GitHub PAT (ghs_ prefix)
@@ -239,5 +239,125 @@ describe("detectSecrets — provider detection", () => {
 
   it("handles string shorter than any token without error", () => {
     expect(() => detectSecrets("hello world")).not.toThrow();
+  });
+});
+
+describe("Fix 1 — secret-url-creds: generic URL-embedded credentials", () => {
+  it("detects https://user:password@host", () => {
+    const text = "endpoint = https://admin:s3cr3t1@example.com/api";
+    const ids = detectSecrets(text).map((f) => f.ruleId);
+    expect(ids).toContain("secret-url-creds");
+  });
+
+  it("has severity critical", () => {
+    const findings = detectSecrets("https://admin:s3cr3t1@example.com");
+    const f = findings.find((r) => r.ruleId === "secret-url-creds");
+    expect(f?.severity).toBe("critical");
+  });
+
+  it("finding index points at the password, not the username", () => {
+    const text = "https://admin:s3cr3t1@example.com";
+    const findings = detectSecrets(text);
+    const f = findings.find((r) => r.ruleId === "secret-url-creds");
+    expect(f).toBeDefined();
+    const extracted = text.slice(f!.index, f!.index + f!.length);
+    expect(extracted).toBe("s3cr3t1");
+  });
+
+  it("rejects obvious placeholder passwords", () => {
+    const findings = detectSecrets("https://user:password@example.com");
+    expect(findings.filter((f) => f.ruleId === "secret-url-creds")).toHaveLength(0);
+  });
+
+  it("rejects 'user:password' placeholder with no digits", () => {
+    const findings = detectSecrets("https://user:changeme@example.com");
+    expect(findings.filter((f) => f.ruleId === "secret-url-creds")).toHaveLength(0);
+  });
+
+  it("does not duplicate hits already caught by secret-db-conn (named schemes)", () => {
+    const text = "postgres://user:p4ssw0rd@db.internal:5432/app";
+    const findings = detectSecrets(text);
+    const urlCreds = findings.filter((f) => f.ruleId === "secret-url-creds");
+    const dbConn = findings.filter((f) => f.ruleId === "secret-db-conn");
+    expect(dbConn).toHaveLength(1);
+    expect(urlCreds).toHaveLength(0);
+  });
+
+  it("near-miss: no credentials in URL does not fire", () => {
+    expect(
+      detectSecrets("https://example.com/path?q=1").filter((f) => f.ruleId === "secret-url-creds")
+    ).toHaveLength(0);
+  });
+
+  it("near-miss: ftp:// with placeholder password does not fire", () => {
+    expect(
+      detectSecrets("ftp://user:PLACEHOLDER@example.com").filter((f) => f.ruleId === "secret-url-creds")
+    ).toHaveLength(0);
+  });
+});
+
+describe("Fix 2 — secret-openai: T3BlbkFJ marker required for proj/svcacct/admin variants", () => {
+  it("detects a sk-proj- key that contains the T3BlbkFJ marker", () => {
+    const key =
+      "sk-proj-" +
+      "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789aB3dEfGhIjKlMnOpQrStUvW" +
+      "T3BlbkFJ" +
+      "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789aB3dEfGhIjKlMnOpQrStUvW";
+    const ids = detectSecrets(`key = "${key}"`).map((f) => f.ruleId);
+    expect(ids).toContain("secret-openai");
+  });
+
+  it("does NOT match sk-proj- without the T3BlbkFJ marker", () => {
+    const bareKey = "sk-proj-" + "aB3dEfGhIjKlMnOpQrStUvWxYz0123456789aB3dEfGhIjKlMnOpQrStUvWxYz01234";
+    const findings = detectSecrets(`key = "${bareKey}"`).filter((f) => f.ruleId === "secret-openai");
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still matches legacy sk- key (no proj prefix, has marker in body)", () => {
+    const legacyKey = "sk-" + "aB3dEfGhIjKlMnOpQrSt1234";
+    const ids = detectSecrets(`key = "${legacyKey}"`).map((f) => f.ruleId);
+    expect(ids).toContain("secret-openai");
+  });
+});
+
+describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
+  // Use abc123 as user==password: has a digit, entropy ~2.58 — passes validate.
+  // The old indexOf approach returns the USERNAME offset (first occurrence of "abc123"),
+  // not the PASSWORD offset (second occurrence). The d-flag fix returns the correct one.
+  it("index points at password when username == password (redis://abc123:abc123@host)", () => {
+    const text = "redis://abc123:abc123@host";
+    const findings = detectSecrets(text);
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+    const extracted = text.slice(f!.index, f!.index + f!.length);
+    expect(extracted).toBe("abc123");
+    // Password starts after the second colon (position 15), not after the first (position 7)
+    const secondColonPos = text.indexOf(":", text.indexOf(":") + 1);
+    expect(f!.index).toBe(secondColonPos + 1);
+  });
+
+  it("index points at password for postgres://user:pass@host", () => {
+    const text = "postgres://user:p4ssw0rd@db.internal:5432/app";
+    const findings = detectSecrets(text);
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+    const extracted = text.slice(f!.index, f!.index + f!.length);
+    expect(extracted).toBe("p4ssw0rd");
+  });
+
+  it("length matches the actual password length", () => {
+    const text = "mysql://admin:S3cr3tP4ss@db.example.com:3306/prod";
+    const findings = detectSecrets(text);
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+    expect(f!.length).toBe("S3cr3tP4ss".length);
+  });
+
+  it("finding does not contain the raw password value", () => {
+    const text = "redis://abc123:abc123@host";
+    const findings = detectSecrets(text);
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+    expect(Object.values(f!)).not.toContain("abc123");
   });
 });
