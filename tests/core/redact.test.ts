@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { redactCommand } from "../../src/core/scanner/redact.js";
-import { isSecretRule, SECRET_RULE_IDS } from "../../src/core/scanner/secret-rule-ids.js";
+import { isSecretRule } from "../../src/core/scanner/secret-rule-ids.js";
 
 it("treats secret-* ids as secret rules; token-leakage is retired", () => {
   expect(isSecretRule("token-leakage")).toBe(false);

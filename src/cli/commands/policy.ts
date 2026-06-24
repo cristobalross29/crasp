@@ -64,7 +64,7 @@ function listPolicy(policy: Policy): void {
   table.push([
     SECRET_DETECTION_DISPLAY.id,
     SECRET_DETECTION_DISPLAY.severity,
-    SECRET_DETECTION_DISPLAY.target ?? "any",
+    SECRET_DETECTION_DISPLAY.target,
     SECRET_DETECTION_DISPLAY.description,
   ]);
 

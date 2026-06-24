@@ -25,6 +25,7 @@ export async function handlePolicy(policy: Policy): Promise<PolicyResult> {
   return {
     policyId: policy.id,
     policyName: policy.name,
+    // totalRules intentionally includes the synthetic secret-detection descriptor (builtin rules + 1).
     totalRules: rules.length,
     rules,
   };
