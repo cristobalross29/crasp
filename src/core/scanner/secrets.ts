@@ -201,11 +201,19 @@ const PROVIDER_RULES: ProviderRule[] = [
   },
 
   // ── Twilio ───────────────────────────────────────────────────────────────────
+  // Account SID (AC + 32 hex): semi-public identifier, frequently committed in
+  // client config — advisory only (low) to avoid false-positive denies.
+  {
+    ruleId: "secret-twilio-sid",
+    severity: "low",
+    regex: /(AC[0-9a-f]{32})/,
+    entropyFloor: 3.0,
+  },
+  // API Key SID (SK + 32 hex): a real secret — deny on write/edit.
   {
     ruleId: "secret-twilio",
     severity: "critical",
-    // Twilio Account SID (AC...) or API Key SID (SK...)
-    regex: /((?:AC|SK)[0-9a-f]{32})/,
+    regex: /(SK[0-9a-f]{32})/,
     entropyFloor: 3.0,
   },
 

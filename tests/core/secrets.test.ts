@@ -127,9 +127,9 @@ const POS: Array<[string, string]> = [
   ["secret-slack-webhook", "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"],
   // SendGrid
   ["secret-sendgrid", "SG." + "aB3dEfGhIjKlMnOpQrSt" + "." + "aB3dEfGhIjKlMnOpQrStUvWxYz01234567"],
-  // Twilio account SID — AC + 32 lowercase hex chars
-  ["secret-twilio", "AC" + "0123456789abcdef0123456789abcdef"],
-  // Twilio API key — SK + 32 lowercase hex chars
+  // Twilio Account SID — AC + 32 lowercase hex chars (semi-public, advisory)
+  ["secret-twilio-sid", "AC" + "0123456789abcdef0123456789abcdef"],
+  // Twilio API Key SID — SK + 32 lowercase hex chars (real secret, critical)
   ["secret-twilio", "SK" + "fedcba9876543210fedcba9876543210"],
   // HuggingFace token
   ["secret-huggingface", "hf_" + "aB3dEfGhIjKlMnOpQrStUvWxYz012345678"],
@@ -216,6 +216,23 @@ describe("detectSecrets — provider detection", () => {
         (f) => f.ruleId === "secret-pem"
       )
     ).toHaveLength(0);
+  });
+
+  it("Twilio Account SID (AC+32hex) yields severity low — never critical", () => {
+    const sid = "AC" + "0123456789abcdef0123456789abcdef";
+    const findings = detectSecrets(`accountSid = "${sid}"`);
+    const f = findings.find((r) => r.ruleId === "secret-twilio-sid");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("low");
+    expect(findings.filter((r) => r.severity === "critical" && r.ruleId.startsWith("secret-twilio"))).toHaveLength(0);
+  });
+
+  it("Twilio API Key SID (SK+32hex) yields severity critical", () => {
+    const apiKey = "SK" + "fedcba9876543210fedcba9876543210";
+    const findings = detectSecrets(`apiKey = "${apiKey}"`);
+    const f = findings.find((r) => r.ruleId === "secret-twilio");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("critical");
   });
 
   it("returns only {ruleId, severity, index, length} fields", () => {
