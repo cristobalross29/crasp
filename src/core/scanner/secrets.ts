@@ -393,10 +393,6 @@ const HEX_RE = /^[0-9a-fA-F]+$/;
 const GIT_SHA_RE = /^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$/;
 
 // Canonical dashed UUID: 8-4-4-4-12 hex groups separated by dashes (36 chars total).
-// Because TOKEN_RE includes '-', a dashed UUID matches as one 36-char token.
-// Its Shannon entropy is ~3.4 bits/char — below the 4.5 base64 floor — so it
-// would be dropped anyway, but we add an explicit guard so the behaviour is
-// correct-by-design, not by entropy coincidence.
 const DASHED_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 // Lockfile integrity hashes: TOKEN_RE includes '-', so "sha512-<base64hash>"
@@ -404,7 +400,129 @@ const DASHED_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 // tests the TOKEN ITSELF (not the source text before it).
 const LOCKFILE_TOKEN_RE = /^sha(?:512|384|256)-/;
 
-function detectGenericEntropy(input: string): SecretFinding[] {
+// ── Precision package: path/extension skip ───────────────────────────────────
+// Lockfile basenames — generic entropy is meaningless in these files.
+const SKIP_FILES = new Set([
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "Cargo.lock",
+  "go.sum",
+  "poetry.lock",
+  "Gemfile.lock",
+  "composer.lock",
+]);
+
+// Extensions that are inherently high-noise for entropy (minified/map/snapshot).
+const SKIP_EXTS = new Set([".min.js", ".min.css", ".map", ".snap"]);
+
+function shouldSkipEntropyForPath(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  // Extract basename from any path separator style.
+  const base = filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
+  if (SKIP_FILES.has(base)) return true;
+  // *.lock catch-all (besides the named set above).
+  if (base.endsWith(".lock")) return true;
+  // Walk every dot position from left to right; the first suffix that is in
+  // SKIP_EXTS wins.  This correctly resolves "bundle.min.js" → ".min.js"
+  // before it reaches the shorter ".js" suffix.
+  let dot = base.indexOf(".");
+  while (dot !== -1) {
+    if (SKIP_EXTS.has(base.slice(dot))) return true;
+    dot = base.indexOf(".", dot + 1);
+  }
+  return false;
+}
+
+// ── Precision package: per-line hash-prefix gate ─────────────────────────────
+// Keywords that indicate a line is carrying a well-known non-secret hash.
+// Tested against the full source line of each token — cheap substring scan.
+const HASH_LINE_KEYWORDS = ["sha512-", "sha384-", "sha256:", "integrity", "h1:", "resolved", "digest"];
+
+function lineContainsHashKeyword(line: string): boolean {
+  const lower = line.toLowerCase();
+  for (const kw of HASH_LINE_KEYWORDS) {
+    if (lower.includes(kw)) return true;
+  }
+  return false;
+}
+
+// Pre-split lines once per detectGenericEntropy call; reused across tokens.
+// Returns the source line (not lowercased) for a given character offset.
+function buildLineIndex(input: string): string[] {
+  return input.split("\n");
+}
+
+function lineForOffset(lines: string[], offset: number, input: string): string {
+  let pos = 0;
+  for (const line of lines) {
+    const end = pos + line.length;
+    if (offset <= end) return line;
+    pos = end + 1; // +1 for the '\n'
+  }
+  return lines[lines.length - 1] ?? "";
+}
+
+// ── Precision package: broader noise denylist ────────────────────────────────
+
+// Dashless UUID: 32 contiguous hex chars (no dashes). Distinct from GIT_SHA_RE
+// which requires exactly 40 or 64 chars.
+const DASHLESS_UUID_RE = /^[0-9a-fA-F]{32}$/;
+
+// Base32 alphabet: uppercase A-Z plus digits 2-7, 20+ chars.
+const BASE32_RE = /^[A-Z2-7]{20,}$/;
+
+// IPv6 literal: two or more colon-separated hex groups (covers full and
+// compressed forms). TOKEN_RE includes '-' but not ':', so an IPv6 literal
+// that arrives here must have been split at the colons — however go.sum h1:
+// lines and docker digest lines contain colon-adjacent tokens that the
+// per-line gate catches first. This guard handles any stray IPv6 segment
+// token that slips through.
+const IPV6_SEGMENT_RE = /^[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){2,}$/;
+
+// Hex-color run: a '#' is not in TOKEN_RE's charset, so the token here is
+// just the hex digits. Drop runs of 6-char hex groups (length divisible by 6,
+// all hex, no alpha chars above 'f'/'F'). This catches "#1a2b3c4d5e6f…"
+// colour strings once the '#' is stripped by the tokenizer.
+const HEX_COLOR_RUN_RE = /^(?:[0-9a-fA-F]{6})+$/;
+
+// Docker sha256-prefixed digest: the token starts with "sha256:" — but
+// TOKEN_RE doesn't include ':', so it would be split. The per-line gate
+// on "sha256:" covers most cases. This guard drops "sha256" as a standalone
+// prefix token if it ever appears without the colon.
+// More practically, the full "sha256:…" hash is caught by LOCKFILE_TOKEN_RE
+// (sha256-) or the per-line gate. Belt-and-suspenders: drop any token that
+// is pure lowercase hex of exactly 64 chars (docker digest body) — already
+// handled by GIT_SHA_RE. No additional regex needed.
+
+// jwt.io sample JWT: the well-known demo token circulates in docs/READMEs.
+// TOKEN_RE splits the JWT at '.' so we cannot match the full token in one shot.
+// Instead we check the input for the fixed header+payload anchor ONCE before
+// the token loop; if present, we record the character range of the full JWT
+// and skip any token that falls within it.
+//
+// Fixed header: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9  ({"alg":"HS256","typ":"JWT"})
+// Fixed payload prefix: eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9l
+// Anchoring on both makes false-suppression effectively impossible.
+const JWT_IO_ANCHOR = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9l";
+
+function detectGenericEntropy(input: string, filePath?: string): SecretFinding[] {
+  if (shouldSkipEntropyForPath(filePath)) return [];
+
+  // Pre-scan: find all ranges occupied by the jwt.io sample JWT so tokens
+  // that fall inside them can be skipped without per-token string construction.
+  const jwtIoRanges: Array<[number, number]> = [];
+  let searchFrom = 0;
+  while (true) {
+    const pos = input.indexOf(JWT_IO_ANCHOR, searchFrom);
+    if (pos === -1) break;
+    // The full jwt.io token ends at the last non-TOKEN_RE char after the anchor.
+    // Conservatively mark from pos to pos + 200 (the full token is ~180 chars).
+    jwtIoRanges.push([pos, pos + 200]);
+    searchFrom = pos + JWT_IO_ANCHOR.length;
+  }
+
+  const lines = buildLineIndex(input);
   const findings: SecretFinding[] = [];
   let tokenCount = 0;
   let m: RegExpExecArray | null;
@@ -426,15 +544,32 @@ function detectGenericEntropy(input: string): SecretFinding[] {
       if (GIT_SHA_RE.test(token)) continue;
 
       // ── Noise filter 2: canonical dashed UUID (36-char 8-4-4-4-12 form) ──
-      // TOKEN_RE includes '-', so the full dashed UUID matches as one token.
-      // Dropped explicitly here; entropy (~3.4) would also drop it, but this
-      // makes the behaviour correct-by-design rather than by coincidence.
       if (DASHED_UUID_RE.test(token)) continue;
 
       // ── Noise filter 3: lockfile sha512-/sha384-/sha256- hash ────────────
-      // TOKEN_RE includes '-', so "sha512-<base64>" is ONE token starting with
-      // "sha512-". Check the token itself, not the source text before it.
       if (LOCKFILE_TOKEN_RE.test(token)) continue;
+
+      // ── Noise filter 4 (Task 8): dashless UUID (32 hex chars) ────────────
+      if (DASHLESS_UUID_RE.test(token)) continue;
+
+      // ── Noise filter 5 (Task 8): base32 string ───────────────────────────
+      if (BASE32_RE.test(token)) continue;
+
+      // ── Noise filter 6 (Task 8): IPv6 segment ────────────────────────────
+      if (IPV6_SEGMENT_RE.test(token)) continue;
+
+      // ── Noise filter 7 (Task 8): hex-color run ───────────────────────────
+      if (HEX_COLOR_RUN_RE.test(token)) continue;
+
+      // ── Noise filter 8 (Task 8): jwt.io sample JWT ───────────────────────
+      // Check whether this token falls inside a pre-identified jwt.io range.
+      if (jwtIoRanges.some(([start, end]) => idx >= start && idx < end)) continue;
+
+      // ── Noise filter 9 (Task 8): per-line hash-prefix gate ───────────────
+      // If the source line containing this token carries a hash-context keyword,
+      // drop the token — it's almost certainly a hash value, not a secret.
+      const sourceLine = lineForOffset(lines, idx, input);
+      if (lineContainsHashKeyword(sourceLine)) continue;
 
       // ── Charset classification + entropy floor ───────────────────────────
       const isHex = HEX_RE.test(token);
@@ -442,15 +577,12 @@ function detectGenericEntropy(input: string): SecretFinding[] {
 
       if (isHex) {
         // Hex tokens: floor 3.0 bits/char, plus numeric penalty.
-        // Count digit chars in a single pass (no lookahead).
         let digitCount = 0;
         for (let i = 0; i < token.length; i++) {
           const c = token.charCodeAt(i);
           if (c >= 48 && c <= 57) digitCount++;
         }
         const digitRatio = digitCount / token.length;
-        // Penalise heavily numeric hex strings (e.g. "12345678901234567890"
-        // has high digit ratio but low information density vs a real key).
         const penalisedEntropy = entropy - digitRatio * 0.5;
         if (penalisedEntropy < 3.0) continue;
       } else {
@@ -528,7 +660,7 @@ export function detectSecrets(text: string, _filePath?: string): SecretFinding[]
   // (when needed) is by (ruleId, index) — callers should not assume
   // findings are non-overlapping across rule IDs.
   try {
-    const genericFindings = detectGenericEntropy(input);
+    const genericFindings = detectGenericEntropy(input, _filePath);
     findings.push(...genericFindings);
   } catch {
     // detectGenericEntropy must not propagate — fail open

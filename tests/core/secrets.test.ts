@@ -378,6 +378,142 @@ describe("generic entropy detector (secret-generic-entropy)", () => {
   });
 });
 
+describe("Task 8 — precision package (path/ext skip, hash-prefix gate, noise denylist)", () => {
+  const HIGH_ENTROPY_BLOB = "Zk9wQ3hLmnP4vR7tY2uX8wB1nM6kJ3hG5fD0sA9qWeRtY";
+
+  // ── Path/extension skip ──────────────────────────────────────────────────
+
+  it("no generic entropy on pnpm-lock.yaml", () => {
+    expect(
+      detectSecrets(`"integrity": "${HIGH_ENTROPY_BLOB}"`, "pnpm-lock.yaml")
+        .some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("no generic entropy on package-lock.json", () => {
+    expect(
+      detectSecrets(`"integrity": "${HIGH_ENTROPY_BLOB}"`, "/project/package-lock.json")
+        .some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("no generic entropy on a *.min.js file", () => {
+    expect(
+      detectSecrets(`var x="${HIGH_ENTROPY_BLOB}"`, "/dist/bundle.min.js")
+        .some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("no generic entropy on a *.map file", () => {
+    expect(
+      detectSecrets(`{"mappings":"${HIGH_ENTROPY_BLOB}"}`, "app.js.map")
+        .some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("no generic entropy on a *.snap file", () => {
+    expect(
+      detectSecrets(`exports[\`x 1\`] = \`${HIGH_ENTROPY_BLOB}\`;`, "tests/__snapshots__/foo.test.ts.snap")
+        .some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("providers STILL fire on pnpm-lock.yaml (AKIA key is a real leak)", () => {
+    const content = `resolved "https://registry.npmjs.org/foo/-/foo-1.0.0.tgz#abc123"\nAKIAIOSFODNN7EXAMPLE`;
+    const findings = detectSecrets(content, "pnpm-lock.yaml");
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+    expect(findings.some(f => f.ruleId === "secret-generic-entropy")).toBe(false);
+  });
+
+  it("providers STILL fire on a *.min.js file", () => {
+    const content = `var k="AKIAIOSFODNN7EXAMPLE";`;
+    const findings = detectSecrets(content, "bundle.min.js");
+    expect(findings.some(f => f.ruleId === "secret-aws-akia")).toBe(true);
+    expect(findings.some(f => f.ruleId === "secret-generic-entropy")).toBe(false);
+  });
+
+  // ── Per-line hash-prefix gate ────────────────────────────────────────────
+
+  it("does NOT flag a token on an integrity= line (HTML SRI)", () => {
+    const line = `<link rel="stylesheet" integrity="sha384-${HIGH_ENTROPY_BLOB}" crossorigin="anonymous">`;
+    expect(
+      detectSecrets(line).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag a token on a resolved line (pnpm lockfile yaml)", () => {
+    const line = `    resolved "https://registry.npmjs.org/foo/-/foo-1.0.0.tgz#${HIGH_ENTROPY_BLOB}"`;
+    expect(
+      detectSecrets(line).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag a token on a sha256: line (docker digest)", () => {
+    const line = `digest: sha256:${HIGH_ENTROPY_BLOB}abc`;
+    expect(
+      detectSecrets(line).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag a token on a h1: line (go.sum)", () => {
+    const line = `github.com/pkg/errors v0.9.1 h1:${HIGH_ENTROPY_BLOB}=`;
+    expect(
+      detectSecrets(line).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("still flags a high-entropy token on a normal line (no hash-prefix keywords)", () => {
+    expect(
+      detectSecrets(`token = "${HIGH_ENTROPY_BLOB}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(true);
+  });
+
+  // ── Noise denylist ───────────────────────────────────────────────────────
+
+  it("does NOT flag a dashless UUID (32 hex chars)", () => {
+    const dashless = "550e8400e29b41d4a716446655440000";
+    expect(
+      detectSecrets(`id = "${dashless}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag a base32 string (uppercase A-Z + 2-7, 24+ chars)", () => {
+    const base32 = "JBSWY3DPEBLW64TMMQQQ2YLSMQQQ";
+    expect(
+      detectSecrets(`code = "${base32}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag an IPv6 literal", () => {
+    const ipv6 = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
+    expect(
+      detectSecrets(`addr = "${ipv6}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag an HTML hex color run (repeated hex color codes)", () => {
+    const colorHex = "#1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d";
+    expect(
+      detectSecrets(`color: ${colorHex};`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag the jwt.io sample JWT (known dummy payload)", () => {
+    const jwtIoSample =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    expect(
+      detectSecrets(`token = "${jwtIoSample}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("does NOT flag a docker sha256 digest", () => {
+    const digest = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    expect(
+      detectSecrets(`image: nginx@${digest}`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+});
+
 describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
   // Use abc123 as user==password: has a digit, entropy ~2.58 — passes validate.
   // The old indexOf approach returns the USERNAME offset (first occurrence of "abc123"),
