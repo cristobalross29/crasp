@@ -472,20 +472,6 @@ const DASHLESS_UUID_RE = /^[0-9a-fA-F]{32}$/;
 // Base32 alphabet: uppercase A-Z plus digits 2-7, 20+ chars.
 const BASE32_RE = /^[A-Z2-7]{20,}$/;
 
-// IPv6 literal: two or more colon-separated hex groups (covers full and
-// compressed forms). TOKEN_RE includes '-' but not ':', so an IPv6 literal
-// that arrives here must have been split at the colons — however go.sum h1:
-// lines and docker digest lines contain colon-adjacent tokens that the
-// per-line gate catches first. This guard handles any stray IPv6 segment
-// token that slips through.
-const IPV6_SEGMENT_RE = /^[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){2,}$/;
-
-// Hex-color run: a '#' is not in TOKEN_RE's charset, so the token here is
-// just the hex digits. Drop runs of 6-char hex groups (length divisible by 6,
-// all hex, no alpha chars above 'f'/'F'). This catches "#1a2b3c4d5e6f…"
-// colour strings once the '#' is stripped by the tokenizer.
-const HEX_COLOR_RUN_RE = /^(?:[0-9a-fA-F]{6})+$/;
-
 // Docker sha256-prefixed digest: the token starts with "sha256:" — but
 // TOKEN_RE doesn't include ':', so it would be split. The per-line gate
 // on "sha256:" covers most cases. This guard drops "sha256" as a standalone
@@ -555,17 +541,11 @@ function detectGenericEntropy(input: string, filePath?: string): SecretFinding[]
       // ── Noise filter 5 (Task 8): base32 string ───────────────────────────
       if (BASE32_RE.test(token)) continue;
 
-      // ── Noise filter 6 (Task 8): IPv6 segment ────────────────────────────
-      if (IPV6_SEGMENT_RE.test(token)) continue;
-
-      // ── Noise filter 7 (Task 8): hex-color run ───────────────────────────
-      if (HEX_COLOR_RUN_RE.test(token)) continue;
-
-      // ── Noise filter 8 (Task 8): jwt.io sample JWT ───────────────────────
+      // ── Noise filter 6 (Task 8): jwt.io sample JWT ───────────────────────
       // Check whether this token falls inside a pre-identified jwt.io range.
       if (jwtIoRanges.some(([start, end]) => idx >= start && idx < end)) continue;
 
-      // ── Noise filter 9 (Task 8): per-line hash-prefix gate ───────────────
+      // ── Noise filter 7 (Task 8): per-line hash-prefix gate ───────────────
       // If the source line containing this token carries a hash-context keyword,
       // drop the token — it's almost certainly a hash value, not a secret.
       const sourceLine = lineForOffset(lines, idx, input);

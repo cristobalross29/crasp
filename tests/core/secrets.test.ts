@@ -485,16 +485,38 @@ describe("Task 8 — precision package (path/ext skip, hash-prefix gate, noise d
   });
 
   it("does NOT flag an IPv6 literal", () => {
+    // TOKEN_RE charset is [A-Za-z0-9+/=_-] — ':' is not included, so an IPv6
+    // literal is split at every colon and no individual segment is ≥20 chars.
+    // No IPV6_SEGMENT_RE filter is needed or present; this test guards the
+    // real mechanism (colon exclusion from TOKEN_RE) against charset regressions.
     const ipv6 = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
     expect(
       detectSecrets(`addr = "${ipv6}"`).some(f => f.ruleId === "secret-generic-entropy")
     ).toBe(false);
   });
 
-  it("does NOT flag an HTML hex color run (repeated hex color codes)", () => {
-    const colorHex = "#1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d";
+  it("does NOT flag realistic CSS hex colors (hash-prefixed short segments)", () => {
+    // '#' is not in TOKEN_RE's charset, so a CSS color like #1a2b3c is split
+    // at '#' and the remaining "1a2b3c" (6 chars) is below the 20-char minimum.
+    // No HEX_COLOR_RUN_RE filter is needed; this test guards the real mechanism.
+    const cssLine = "color: #1a2b3c; background: #4d5e6f; border-color: #7a8b9c;";
     expect(
-      detectSecrets(`color: ${colorHex};`).some(f => f.ruleId === "secret-generic-entropy")
+      detectSecrets(cssLine).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(false);
+  });
+
+  it("24-char pure-hex high-entropy token is evaluated by entropy floor (not blanket-dropped)", () => {
+    // With HEX_COLOR_RUN_RE removed, a 24-char pure-hex token (length divisible
+    // by 6) is no longer suppressed wholesale. It reaches the hex entropy floor
+    // (penalised entropy ≥ 3.0). A high-entropy 24-hex token like a real secret
+    // must be flagged; a low-entropy one (e.g. all-zero) must not.
+    const highEntropyHex = "a1b2c3d4e5f6a7b8c9d0e1f2"; // 24 chars, well-distributed hex
+    expect(
+      detectSecrets(`token = "${highEntropyHex}"`).some(f => f.ruleId === "secret-generic-entropy")
+    ).toBe(true);
+    const lowEntropyHex = "000000000000000000000000"; // 24 zeros — entropy 0, must not fire
+    expect(
+      detectSecrets(`token = "${lowEntropyHex}"`).some(f => f.ruleId === "secret-generic-entropy")
     ).toBe(false);
   });
 
