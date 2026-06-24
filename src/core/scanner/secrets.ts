@@ -54,6 +54,11 @@ function isValidJwt(token: string): boolean {
   }
 }
 
+// DB URL schemes covered by secret-db-conn.
+// Also used as the negative-lookahead exclusion list in secret-url-creds so the
+// two rules share one source of truth and cannot drift independently.
+const DB_SCHEMES = "postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis|amqp|mssql";
+
 // Provider rule table.
 // Every regex uses a non-capturing prefix so group 1 is the secret value itself.
 // Regexes are NOT global — they're run in a manual exec loop below.
@@ -76,18 +81,21 @@ const PROVIDER_RULES: ProviderRule[] = [
   },
 
   // ── OpenAI ───────────────────────────────────────────────────────────────────
-  // Current format: proj/svcacct/admin variants MUST contain the T3BlbkFJ marker
-  // (base64("OpenAI")) — near-zero FP at the deny tier.
+  // Precision-over-recall decision: proj/svcacct/admin variants MUST contain the
+  // T3BlbkFJ marker (base64("OpenAI")). Real current OpenAI project keys always
+  // embed this marker, giving near-zero false positives at the deny tier. A bare
+  // sk-proj- without the marker is intentionally NOT matched by this rule.
+  // Generous flanking bounds ({58,74} on each side) absorb small key-length variance.
   {
     ruleId: "secret-openai",
     severity: "critical",
     regex: /(sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{58,74}T3BlbkFJ[A-Za-z0-9_\-]{58,74})/d,
   },
-  // Legacy format: sk- followed by 20+ alphanumeric chars (no proj/svcacct/admin prefix)
+  // Legacy format: sk- followed by 20–100 alphanumeric chars (no proj/svcacct/admin prefix)
   {
     ruleId: "secret-openai",
     severity: "critical",
-    regex: /(sk-(?!(?:proj|svcacct|admin)-)(?!ant-)[A-Za-z0-9]{20,})/d,
+    regex: /(sk-(?!(?:proj|svcacct|admin)-)(?!ant-)[A-Za-z0-9]{20,100})/d,
     entropyFloor: 3.0,
   },
 
@@ -268,6 +276,7 @@ const PROVIDER_RULES: ProviderRule[] = [
   },
 
   // ── DB / URL connection strings ──────────────────────────────────────────────
+  // DB_SCHEMES is shared with secret-url-creds below (they must not drift).
   {
     ruleId: "secret-db-conn",
     severity: "critical",
@@ -275,18 +284,24 @@ const PROVIDER_RULES: ProviderRule[] = [
     // postgres/mysql/mongodb/redis/amqp/mssql :// user : password @ host
     // `d` flag gives m.indices[1] = exact [start,end] of the password group,
     // fixing the indexOf offset bug when username == password.
-    regex: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^:/\s]+:([^@/\s]{3,})@[^\s/]+/id,
-    // Require a digit AND entropy >= 2.5 to reject common word-only placeholders
-    // like "password", "changeme", "PLACEHOLDER" (no digit fails immediately).
+    // OR gate: the structural DB rule catches passwords that entropy alone can't
+    // (digit-free high-entropy strings like "WinterIsComing"). Require EITHER a
+    // digit OR entropy >= 3.0 to reject common short/simple placeholders
+    // ("password" has no digit and entropy 2.75 — correctly rejected).
+    regex: new RegExp(
+      `(?:${DB_SCHEMES}):\\/\\/[^:/\\s]+:([^@/\\s]{3,})@[^\\s/]+`,
+      "id"
+    ),
     validate(captured: string): boolean {
       try {
-        return /\d/.test(captured) && shannonEntropy(captured) >= 2.5;
+        return /\d/.test(captured) || shannonEntropy(captured) >= 3.0;
       } catch {
         return false;
       }
     },
   },
   // ── Generic URL-embedded credentials (any scheme except named DB schemes) ────
+  // DB_SCHEMES negative-lookahead is built from the same constant as secret-db-conn above.
   {
     ruleId: "secret-url-creds",
     severity: "critical",
@@ -295,7 +310,10 @@ const PROVIDER_RULES: ProviderRule[] = [
     // `d` flag for accurate group-1 offset. Negative lookahead excludes DB schemes.
     // (?<![a-zA-Z]) ensures the match starts at a token boundary, so
     // "postgres://..." cannot be matched starting at the 'o' (skipping 'p').
-    regex: /(?<![a-zA-Z])(?!(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/)[a-zA-Z][a-zA-Z0-9+\-.]{1,30}:\/\/[^:/\s@]{1,100}:([^@/\s]{3,100})@[^\s/]+/d,
+    regex: new RegExp(
+      `(?<![a-zA-Z])(?!(?:${DB_SCHEMES}):\\/\\/)[a-zA-Z][a-zA-Z0-9+\\-.]{1,30}:\\/\\/[^:/\\s@]{1,100}:([^@/\\s]{3,100})@[^\\s/]+`,
+      "d"
+    ),
     // Require a digit AND entropy >= 2.5 to reject common word-only placeholders
     // like "password", "changeme", "PLACEHOLDER" (no digit fails immediately).
     validate(captured: string): boolean {

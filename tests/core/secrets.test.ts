@@ -320,6 +320,25 @@ describe("Fix 2 — secret-openai: T3BlbkFJ marker required for proj/svcacct/adm
   });
 });
 
+describe("Fix 4 (round-2) — secret-db-conn: OR gate (digit OR high-entropy)", () => {
+  it("FIRES for high-entropy digit-free password: mongodb://admin:WinterIsComing@h", () => {
+    const findings = detectSecrets("mongodb://admin:WinterIsComing@h");
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+  });
+
+  it("FIRES for digit-bearing password: redis://u:p4ss1@h", () => {
+    const findings = detectSecrets("redis://u:p4ss1@h");
+    const f = findings.find((r) => r.ruleId === "secret-db-conn");
+    expect(f).toBeDefined();
+  });
+
+  it("does NOT fire for placeholder 'password' (no digit, entropy < 3.0): mysql://user:password@localhost", () => {
+    const findings = detectSecrets("mysql://user:password@localhost");
+    expect(findings.filter((f) => f.ruleId === "secret-db-conn")).toHaveLength(0);
+  });
+});
+
 describe("Fix 3 — secret-db-conn: index offset points at password, not username", () => {
   // Use abc123 as user==password: has a digit, entropy ~2.58 — passes validate.
   // The old indexOf approach returns the USERNAME offset (first occurrence of "abc123"),
