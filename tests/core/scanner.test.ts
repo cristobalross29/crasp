@@ -9,6 +9,12 @@ import {
 } from "../../src/core/scanner/index.js";
 import type { Policy } from "../../src/types/index.js";
 
+const emptyPolicy: Policy = {
+  id: "empty",
+  name: "Empty Policy",
+  rules: []
+};
+
 const policy: Policy = {
   id: "test-policy",
   name: "Test Policy",
@@ -90,5 +96,19 @@ describe("scanner", () => {
 
     expect(results.map((result) => result.filePath)).toEqual([envLocalPath]);
     expect(results[0].matches).toHaveLength(1);
+  });
+
+  it("detects AWS access key and returns masked match/context (born-redacted)", () => {
+    const content = 'k = "AKIAIOSFODNN7EXAMPLE"';
+    const result = scanContent(content, emptyPolicy);
+
+    expect(result.scanned).toBe(true);
+    const awsMatch = result.matches.find((m) => m.ruleId === "secret-aws-akia");
+    expect(awsMatch).toBeDefined();
+    expect(awsMatch?.severity).toBe("critical");
+    expect(awsMatch?.match).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(awsMatch?.match).toContain("[REDACTED]");
+    expect(awsMatch?.context).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(awsMatch?.context).toContain("[REDACTED]");
   });
 });

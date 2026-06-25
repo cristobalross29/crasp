@@ -19,9 +19,7 @@ describe("MCP tools — builtin policy integration", () => {
       );
       expect(result.action).toBe("block");
       expect(result.safe).toBe(false);
-      expect(result.violations.some((v) => v.ruleId === "token-leakage")).toBe(
-        true
-      );
+      expect(result.violations.some((v) => v.ruleId.startsWith("secret-"))).toBe(true);
     });
 
     it("redacts the actual key value in violation output", async () => {
@@ -29,7 +27,7 @@ describe("MCP tools — builtin policy integration", () => {
         { content: "SECRET_KEY=sk-abcdefghijklmnopqrstuvwxyz123456" },
         POLICY
       );
-      const v = result.violations.find((v) => v.ruleId === "token-leakage")!;
+      const v = result.violations.find((v) => v.ruleId.startsWith("secret-"))!;
       expect(v.match).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
       expect(v.match).toContain("[REDACTED]");
     });
@@ -117,16 +115,22 @@ describe("MCP tools — builtin policy integration", () => {
   });
 
   describe("crasp_policy", () => {
-    it("returns at least 10 builtin rules", async () => {
+    it("returns at least 9 builtin rules", async () => {
       const result = await handlePolicy(POLICY);
-      expect(result.totalRules).toBeGreaterThanOrEqual(10);
+      expect(result.totalRules).toBeGreaterThanOrEqual(9);
     });
 
-    it("includes token-leakage as a critical rule", async () => {
+    it("includes the secret-detection synthetic descriptor", async () => {
+      const result = await handlePolicy(POLICY);
+      const descriptor = result.rules.find((r) => r.id === "secret-detection");
+      expect(descriptor).toBeDefined();
+      expect(descriptor!.severity).toBe("critical");
+    });
+
+    it("does not include token-leakage as a runnable rule", async () => {
       const result = await handlePolicy(POLICY);
       const rule = result.rules.find((r) => r.id === "token-leakage");
-      expect(rule).toBeDefined();
-      expect(rule!.severity).toBe("critical");
+      expect(rule).toBeUndefined();
     });
 
     it("returns policyId and policyName as strings", async () => {

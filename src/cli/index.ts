@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name("crasp")
   .description("Local-first security layer for Claude Code — intercepts Write/Edit/Read/Bash (PreToolUse) and scans tool results (PostToolUse) to block leaked secrets, dangerous commands, prompt injection, and policy violations")
-  .version("0.1.4");
+  .version("0.2.0");
 
 program
   .command("init")

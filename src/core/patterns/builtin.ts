@@ -69,15 +69,6 @@ export const BUILTIN_POLICY: Policy = {
       message: "PII exposure detected."
     },
     {
-      id: "token-leakage",
-      description: "Detects leaked API tokens and common secret formats.",
-      severity: "critical",
-      target: "any",
-      pattern:
-        "(?:(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)[ \\t]*[=:][ \\t]*[\"']?(?!(?:your|example|placeholder|change_?me|todo|xxx|<|process\\.|normalize|original|authenticated))(?=[a-z0-9._/+\\-=]*\\d)[a-z0-9][a-z0-9._/+\\-=]{15,}[\"']?|bearer[ \\t]+[a-z0-9._-]{20,}|sk-[a-z0-9]{20,}|github_pat_[a-z0-9_]+|ghp_[a-z0-9]{20,}|glpat-[a-z0-9_-]{20,}|xox[baprs]-[a-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----)",
-      message: "Token leakage detected."
-    },
-    {
       id: "system-prompt-extraction",
       description: "Detects attempts to reveal system or developer prompts.",
       severity: "medium",

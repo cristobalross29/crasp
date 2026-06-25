@@ -175,6 +175,10 @@ Sources:
    this…"). These ship as a curated builtin rule set in a new module, mirroring
    `bash-rules.ts`.
 
+   > **F7 note (v0.2.0):** Inbound secret coverage now comes from the `secrets.ts`
+   > module (per-provider `secret-*` rules) rather than `token-leakage`. Inbound
+   > findings are gated to high-confidence critical-severity provider matches only.
+
 ## Design
 
 Mirror the established `bash-rules.ts` / `sensitive-paths.ts` pattern: a new

@@ -1,4 +1,5 @@
 import type { FileScanMatch, FileScanResult } from "../../types/index.js";
+import { isSecretRule } from "./secret-rule-ids.js";
 
 export function redactSensitiveScanResults(
   results: FileScanResult[]
@@ -9,8 +10,8 @@ export function redactSensitiveScanResults(
   }));
 }
 
-function redactSensitiveMatch(match: FileScanMatch): FileScanMatch {
-  if (match.ruleId !== "token-leakage") return match;
+export function redactSensitiveMatch(match: FileScanMatch): FileScanMatch {
+  if (!isSecretRule(match.ruleId)) return match;
   const redacted = redactSecret(match.match);
   return {
     ...match,
@@ -19,7 +20,7 @@ function redactSensitiveMatch(match: FileScanMatch): FileScanMatch {
   };
 }
 
-function redactSecret(value: string): string {
+export function redactSecret(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const assignment = normalized.match(/^([^=:]+[=:]\s*["']?)(.+?)(["']?)$/);
   if (assignment) {

@@ -7,7 +7,7 @@ const TEST_POLICY: Policy = {
   name: "Test Policy",
   rules: [
     {
-      id: "token-leakage",
+      id: "secret-openai",
       description: "Sensitive token detected",
       severity: "critical",
       pattern: "sk-[a-z0-9]{20,}",
@@ -39,7 +39,7 @@ describe("handleCheck", () => {
     expect(result.safe).toBe(false);
     expect(result.action).toBe("block");
     expect(result.violations.length).toBeGreaterThan(0);
-    expect(result.violations[0].ruleId).toBe("token-leakage");
+    expect(result.violations[0].ruleId).toBe("secret-openai");
   });
 
   it("returns warn and safe=false for a medium violation", async () => {
@@ -52,7 +52,7 @@ describe("handleCheck", () => {
     expect(result.violations[0].ruleId).toBe("jailbreak-attempt");
   });
 
-  it("redacts token-leakage match values", async () => {
+  it("redacts secret-* rule match values", async () => {
     const result = await handleCheck(
       { content: "API_KEY=sk-abcdefghijklmnopqrstu" },
       TEST_POLICY

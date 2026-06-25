@@ -45,12 +45,17 @@ export interface PolicyException {
   reason?: string;
 }
 
+export interface PolicySecrets {
+  allowlist?: string[];
+}
+
 export interface Policy {
   id: string;
   name: string;
   version?: string;
   rules: PolicyRule[];
   exceptions?: PolicyException[];
+  secrets?: PolicySecrets;
 }
 
 export interface FileScanMatch {

@@ -17,8 +17,8 @@ describe("printTerminalScanResults", () => {
       filePath: `/tmp/project/${index}/deep/path/file-${index}.ts`,
       matches: [
         {
-          ruleId: "token-leakage",
-          ruleName: "Token leakage",
+          ruleId: "secret-openai",
+          ruleName: "Secret openai",
           severity: "critical",
           line: index + 1,
           column: 1,
@@ -50,8 +50,8 @@ describe("printTerminalScanResults", () => {
         filePath: "/tmp/.env.local",
         matches: [
           {
-            ruleId: "token-leakage",
-            ruleName: "Token leakage",
+            ruleId: "secret-openai",
+            ruleName: "Secret openai",
             severity: "critical",
             line: 1,
             column: 1,

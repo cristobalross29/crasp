@@ -8,7 +8,7 @@ export interface InboundFinding {
    * dedup. It is NEVER emitted into Claude's context or the hook log (D1/D2).
    */
   match: string;
-  kind: "injection" | "secret";
+  kind: "injection" | "secret" | "low-confidence-secret";
 }
 
 // CHARACTER (UTF-16 code-unit) cap, NOT a byte count — a 256k-char cap can be

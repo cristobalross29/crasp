@@ -11,6 +11,51 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] - 2026-06-24
+
+### Added
+
+- **Dedicated multi-provider secret detection (`secrets.ts` module).** Replaces the
+  single `token-leakage` builtin rule with ~22 per-provider matchers covering AWS,
+  Anthropic, OpenAI, GitHub, GitLab, Stripe (keys + webhooks), Google (API + OAuth),
+  Azure, Slack (tokens + webhooks), SendGrid, Twilio, HuggingFace, npm, PyPI,
+  DigitalOcean, Datadog, Cloudflare, Shopify, Square, database/URL connection strings,
+  PEM/SSH private keys, and JWTs. All provider rules fire at `critical` severity (deny
+  tier); JWTs fire at `medium` (advisory).
+- **Bounded generic Shannon-entropy detector** (`secret-generic-entropy`, `low` →
+  advisory). Catches unknown/internal tokens with entropy ≥ 4.5 bits/char (base64) or
+  ≥ 3.0 penalised (hex) after noise filters.
+- **False-positive precision package.** Automatic skip for lockfiles
+  (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, etc.) and minified/map files
+  (`.min.js`, `.min.css`, `.map`, `.snap`). Per-token noise filters: git SHAs, canonical
+  and dashless UUIDs, base32 strings, `sha512-`/`sha384-`/`sha256-` hash tokens,
+  jwt.io sample JWT, and per-line hash-context keyword gate.
+- **`secrets.allowlist` in `crasp.policy.yml`.** Add literal strings or regex patterns
+  to suppress specific known-safe values globally.
+- **Inline `# crasp:allow` / `// crasp:allow` suppression.** Append the comment to any
+  line to suppress secret findings on that line without touching the policy file.
+- **Inbound confidence gate.** PostToolUse inbound scanning now only surfaces
+  high-confidence provider findings (critical-severity `secret-*` rules) when
+  injecting a caution into Claude's context; the generic entropy rule is not emitted
+  inbound to reduce noise on untrusted external content.
+
+### Changed
+
+- The `token-leakage` builtin rule is superseded by the new `secret-*` rule family.
+  Existing `crasp.policy.yml` files that reference `token-leakage` in exceptions or
+  reports will continue to work, but new detections will surface under `secret-*` IDs.
+
+### Known limitations / deferred
+
+- **GCP service-account JSON** is not yet detected; the structural multi-field pattern
+  has high false-positive risk and is deferred.
+- **Azure Storage account keys** are not yet detected (structural/FP-prone — deferred).
+- **OpenAI new-format keys** are matched only when the `T3BlbkFJ` base64 marker is
+  present. This is a precision-over-recall choice: keys without the marker are not
+  blocked at the deny tier to avoid false positives on legacy `sk-` prefixes.
+
+---
+
 ## [0.1.4] - 2026-06-17
 
 ### Added
@@ -152,7 +197,8 @@ Initial release.
 - **Run reports** — every scenario run stored under `.crasp/runs/` as terminal, JSON,
   or HTML output.
 
-[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cristobalross29/crasp/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/cristobalross29/crasp/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/cristobalross29/crasp/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cristobalross29/crasp/compare/v0.1.1...v0.1.2

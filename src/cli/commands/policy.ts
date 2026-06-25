@@ -4,7 +4,17 @@ import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import { scanContent } from "../../core/scanner/index.js";
-import type { Policy } from "../../types/index.js";
+import { redactSensitiveMatch } from "../../core/scanner/redact.js";
+import { isSecretRule } from "../../core/scanner/secret-rule-ids.js";
+import type { Policy, PolicyRule } from "../../types/index.js";
+
+// Display-only row for the built-in secret detector — not a runnable PolicyRule.
+const SECRET_DETECTION_DISPLAY: Pick<PolicyRule, "id" | "severity" | "target" | "description"> = {
+  id: "secret-detection",
+  severity: "critical",
+  target: "any",
+  description: "Built-in secret detection (code) — provider patterns + generic entropy via secrets.ts.",
+};
 
 export async function policyCommand(
   action: string,
@@ -51,6 +61,13 @@ function listPolicy(policy: Policy): void {
     ]);
   }
 
+  table.push([
+    SECRET_DETECTION_DISPLAY.id,
+    SECRET_DETECTION_DISPLAY.severity,
+    SECRET_DETECTION_DISPLAY.target,
+    SECRET_DETECTION_DISPLAY.description,
+  ]);
+
   console.log(table.toString());
 }
 
@@ -68,7 +85,10 @@ function checkText(policy: Policy, text: string): void {
   });
 
   for (const match of result.matches) {
-    table.push([match.ruleId, match.severity, match.match]);
+    const displayMatch = isSecretRule(match.ruleId)
+      ? redactSensitiveMatch(match).match
+      : match.match;
+    table.push([match.ruleId, match.severity, displayMatch]);
   }
 
   console.log(table.toString());

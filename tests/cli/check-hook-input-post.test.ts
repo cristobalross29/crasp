@@ -64,16 +64,16 @@ describe("check --hook-input --post (inbound scanning)", () => {
     const { status, json } = runPost("Bash", {
       tool_name: "Bash",
       tool_input: { command: "cat config" },
-      tool_response: { stdout: "API_KEY=sk-proj-ABCDEF1234567890abcdefGHIJ", stderr: "" },
+      tool_response: { stdout: "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE", stderr: "" },
     });
     expect(status).toBe(0);
     const ctx = json.hookSpecificOutput?.additionalContext ?? "";
     expect(ctx).toBeTruthy();
     // The raw secret must NOT appear...
-    expect(ctx).not.toContain("sk-proj-ABCDEF1234567890abcdefGHIJ");
+    expect(ctx).not.toContain("AKIAIOSFODNN7EXAMPLE");
     // ...and neither must a redacted excerpt of it — there is NO excerpt at all.
     expect(ctx).not.toContain("REDACTED");
-    expect(ctx).not.toContain("API_KEY");
+    expect(ctx).not.toContain("AWS_ACCESS_KEY_ID");
   });
 
   it("D1: does not re-state an injected instruction back inside the caution", () => {
@@ -151,6 +151,31 @@ describe("check --hook-input --post (inbound scanning)", () => {
     });
     expect(status).toBe(0);
     expect(stdout.trim()).toBe("");
+  });
+
+  // ── R6: inbound confidence gate ────────────────────────────────────────────
+  it("R6: generic-entropy-only hit (base64 blob) produces NO caution", () => {
+    // A random high-entropy base64 token that is not a provider secret.
+    // Must NOT trigger the untrusted-data caution.
+    const { status, stdout } = runPost("Read", {
+      tool_name: "Read",
+      tool_input: { file_path: "/project/lockfile" },
+      tool_response: "integrity: sha512-dGhpcyBpcyBhIHJhbmRvbSBiYXNlNjQgYmxvYiB3aXRoIGhpZ2ggZW50cm9weQ==",
+    });
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe("");
+  });
+
+  it("R6: provider-secret hit (AKIA…) in inbound content DOES produce caution", () => {
+    const { status, json } = runPost("Bash", {
+      tool_name: "Bash",
+      tool_input: { command: "cat config" },
+      tool_response: { stdout: "export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE", stderr: "" },
+    });
+    expect(status).toBe(0);
+    const ctx = json.hookSpecificOutput?.additionalContext ?? "";
+    expect(ctx).toContain("Crasp");
+    expect(ctx).toContain("UNTRUSTED DATA");
   });
 
   // ── MED 5: the logged target must be redacted for colon-form + bearer secrets.
