@@ -6,7 +6,6 @@
   "bin": {
     "crasp": "dist/index.js"
   },
-  "types": "./dist/index.d.ts",
   "files": [
     "dist/",
     "README.md",
@@ -26,10 +25,10 @@
     "guardrails"
   ],
   "scripts": {
-    "build": "tsup src/cli/index.ts --format esm --dts --out-dir dist",
+    "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dev": "tsup src/cli/index.ts --watch",
+    "dev": "tsup --watch",
     "release:check": "pnpm prepublishOnly && npm pack --dry-run",
     "prepublishOnly": "pnpm build && pnpm test && pnpm typecheck"
   },
