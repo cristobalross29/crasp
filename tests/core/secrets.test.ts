@@ -123,8 +123,8 @@ const POS: Array<[string, string]> = [
   ["secret-azure", "Q~aB3dEfGhIjKlMnOpQrStUvWxYz012345678"],
   // Slack bot token
   ["secret-slack", "xoxb-" + "1234567890-" + "1234567890123-" + "aB3dEfGhIjKlMnOpQrStUvWx"],
-  // Slack webhook URL
-  ["secret-slack-webhook", "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"],
+  // Slack webhook URL — concatenated so the literal never trips GitHub push protection
+  ["secret-slack-webhook", "https://hooks.slack.com/services/" + "T00000000/" + "B00000000/" + "XXXXXXXXXXXXXXXXXXXXXXXX"],
   // SendGrid
   ["secret-sendgrid", "SG." + "aB3dEfGhIjKlMnOpQrSt" + "." + "aB3dEfGhIjKlMnOpQrStUvWxYz01234567"],
   // Twilio Account SID — AC + 32 lowercase hex chars (semi-public, advisory)
