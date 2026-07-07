@@ -164,3 +164,10 @@ export interface HookLogEntry {
   /** Absent ⇒ "pre". "post" marks PostToolUse (inbound) entries. */
   phase?: HookPhase;
 }
+
+export type BundleInstallAction = "installed" | "updated" | "kept-newer" | "unchanged" | "forced";
+
+export interface BundleInstallResult {
+  action: BundleInstallAction;
+  previousVersion: string | null;
+}
