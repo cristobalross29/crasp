@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, rename } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { BundleInstallAction, BundleInstallResult } from "../../types/index.js";
@@ -56,10 +56,15 @@ export async function installBundle(opts: {
   // The dest is executed concurrently by live hooks in every project on this
   // machine — copy must be atomic (temp file + rename), never truncate-in-place.
   await mkdir(path.dirname(destPath), { recursive: true });
-  const tmpPath = `${destPath}.tmp-${process.pid}`;
-  await copyFile(sourcePath, tmpPath);
-  await chmod(tmpPath, 0o755);
-  await rename(tmpPath, destPath);
+  const tmpPath = `${destPath}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await copyFile(sourcePath, tmpPath);
+    await chmod(tmpPath, 0o755);
+    await rename(tmpPath, destPath);
+  } catch (error) {
+    await rm(tmpPath, { force: true });
+    throw error;
+  }
 
   return { action, previousVersion };
 }

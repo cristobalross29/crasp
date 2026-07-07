@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -108,6 +108,22 @@ describe("installBundle", () => {
         readInstalledVersion: async () => { throw new Error("must not be called"); },
       });
       expect(result).toEqual({ action: "unchanged", previousVersion: null });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("cleans up the temp file when the copy cannot complete", async () => {
+    const { dir, sourcePath, destPath } = await setup();
+    try {
+      // Make rename fail: destPath's parent exists but destPath is a non-empty directory.
+      await mkdir(path.join(destPath, "block"), { recursive: true });
+      await expect(
+        installBundle({
+          sourcePath, destPath, sourceVersion: "0.2.1",
+          readInstalledVersion: async () => null,
+        })
+      ).rejects.toThrow();
+      const siblings = await readdir(path.dirname(destPath));
+      expect(siblings).toEqual(["crasp.js"]); // only the blocking dir itself, no .tmp-* strays
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
