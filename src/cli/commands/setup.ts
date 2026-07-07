@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import chalk from "chalk";
 import {
@@ -7,11 +8,17 @@ import {
   loadConfig,
   writeConfig
 } from "../../core/config/index.js";
+import { craspBundlePath, installBundle, shq } from "../../core/install/index.js";
+import { CLI_VERSION } from "../../version.js";
 import { installHook } from "./hook.js";
-import type { CraspConfig } from "../../types/index.js";
+import type { BundleInstallResult, CraspConfig } from "../../types/index.js";
 
 interface SetupOptions {
   force?: boolean;
+  // Test injection only — never documented:
+  bundleSourcePath?: string;
+  craspHome?: string;
+  skipVerify?: boolean;
 }
 
 const STARTER_POLICY = `id: default-safety
@@ -88,6 +95,44 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   const policyPath = path.join(root, "crasp.policy.yml");
   const scenariosDir = path.join(root, "scenarios");
 
+  // Install the self-contained bundle FIRST — before any project file is
+  // wired. If we can't own ~/.crasp/bin, wiring hooks that point at it is
+  // worse than doing nothing, so fail loudly and touch nothing else.
+  let bundlePath: string;
+  let installResult: BundleInstallResult;
+  try {
+    ({ bundlePath, result: installResult } = await resolveInstalledBundle({
+      bundleSourcePath: options.bundleSourcePath,
+      craspHome: options.craspHome,
+      force: options.force,
+    }));
+  } catch (error) {
+    console.error(chalk.red(
+      `Could not install crasp to ~/.crasp/bin (${error instanceof Error ? error.message : String(error)}).\n` +
+      `Nothing was wired into Claude Code. Check permissions on ~/.crasp and re-run \`npx crasp setup\`.`
+    ));
+    process.exitCode = 1;
+    return;
+  }
+
+  const messages: Record<BundleInstallResult["action"], string> = {
+    installed: `Installed crasp ${CLI_VERSION} to ${bundlePath}`,
+    updated: `Updated crasp ${installResult.previousVersion} -> ${CLI_VERSION} at ${bundlePath} (all projects on this machine now use ${CLI_VERSION})`,
+    forced: `Reinstalled crasp ${CLI_VERSION} to ${bundlePath} (--force)`,
+    unchanged: `crasp ${CLI_VERSION} already installed at ${bundlePath}`,
+    "kept-newer": "", // printed specially below
+  };
+  if (installResult.action === "kept-newer") {
+    console.log(chalk.yellow(
+      `Installed copy at ${bundlePath} is NEWER (${installResult.previousVersion} > ${CLI_VERSION}) — keeping it.\n` +
+      `If you did not expect this, run \`npx crasp@latest setup --force\` to overwrite it.`
+    ));
+  } else {
+    console.log(chalk.dim(messages[installResult.action]));
+  }
+
+  await warnStaleGlobalCrasp();
+
   // Config
   await mkdir(craspDir, { recursive: true });
   if (options.force || !(await exists(configPath))) {
@@ -129,10 +174,10 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   await markHooksEnabled(root);
 
   // Claude Code MCP integration
-  await setupMcpIntegration(root);
+  await setupMcpIntegration(root, bundlePath);
 
   // Claude Code PreToolUse hooks — always-on, harness-level enforcement
-  await ensureClaudeCodeHooks(root);
+  await ensureClaudeCodeHooks(root, bundlePath);
 
   // CLAUDE.md documentation block
   await ensureClaudeMdSection(root, options.force);
@@ -194,26 +239,67 @@ async function ensureGitignoreEntry(root: string): Promise<void> {
   console.log(chalk.dim("Updated .gitignore"));
 }
 
-function resolveCraspBin(): string {
-  // GUI apps on macOS don't inherit ~/.zshrc PATH, so bare "crasp" may not resolve.
-  // Use the absolute path when we can find it; fall back to bare name for npm global installs.
+export function canonicalHookCommand(bundlePath: string, args: string): string {
+  // Absolute node path preferred; PATH lookup ONLY as a fallback when the
+  // recorded node was uninstalled (nvm etc). Without it, a deleted node
+  // version silently kills protection in every wired project.
+  return `N=${shq(process.execPath)}; [ -x "$N" ] || N="$(command -v node || true)"; exec "$N" ${shq(bundlePath)} ${args}`;
+}
+
+export async function readInstalledVersion(p: string): Promise<string | null> {
   try {
-    const resolved = execFileSync("which", ["crasp"], {
+    const out = execFileSync(process.execPath, [p, "--version"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000,
+    }).trim();
+    return /^\d+\.\d+\.\d+$/.test(out) ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveInstalledBundle(opts: {
+  bundleSourcePath?: string;
+  craspHome?: string;
+  force?: boolean;
+} = {}): Promise<{ bundlePath: string; result: BundleInstallResult }> {
+  const sourcePath = opts.bundleSourcePath ?? fileURLToPath(import.meta.url);
+  const destPath = opts.craspHome
+    ? path.join(opts.craspHome, "bin", "crasp.js")
+    : craspBundlePath();
+  const result = await installBundle({
+    sourcePath,
+    destPath,
+    sourceVersion: CLI_VERSION,
+    force: opts.force,
+    readInstalledVersion,
+  });
+  const bundlePath =
+    path.resolve(sourcePath) === path.resolve(destPath) ? sourcePath : destPath;
+  return { bundlePath, result };
+}
+
+async function warnStaleGlobalCrasp(): Promise<void> {
+  try {
+    const p = execFileSync("which", ["crasp"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    if (resolved) return resolved;
+    if (!p) return;
+    const v = await readInstalledVersion(p);
+    if (v && v !== CLI_VERSION) {
+      console.log(chalk.yellow(
+        `An older crasp (${v}) is still installed globally at ${p}.\n` +
+        `Remove it so stale commands don't fight this install: npm rm -g @cristobalross29/crasp (or pnpm remove -g)`
+      ));
+    }
   } catch {
-    // not on PATH in this shell — try well-known pnpm global bin
+    // not on PATH — the normal npx-only case
   }
-  const pnpmBin = process.env["PNPM_HOME"];
-  if (pnpmBin) {
-    return path.join(pnpmBin, "crasp");
-  }
-  return "crasp";
 }
 
-async function setupMcpIntegration(root: string): Promise<void> {
+async function setupMcpIntegration(root: string, bundlePath: string): Promise<void> {
   // Claude Code reads MCP servers from .mcp.json at the project root.
   // ~/.claude/settings.json is for Claude Code UI settings (hooks, permissions) — not MCP.
   const mcpJsonPath = path.join(root, ".mcp.json");
@@ -225,23 +311,18 @@ async function setupMcpIntegration(root: string): Promise<void> {
       mcpConfig = JSON.parse(raw) as { mcpServers: Record<string, unknown> };
       mcpConfig.mcpServers ??= {};
     } catch {
-      // malformed JSON — start fresh
+      console.log(chalk.yellow(".mcp.json is not valid JSON — fix it and re-run setup (left untouched)"));
+      return;
     }
   }
 
-  if ("crasp" in mcpConfig.mcpServers) {
-    console.log(
-      chalk.yellow("Skipped .mcp.json MCP entry (already exists)")
-    );
+  const expected = { type: "stdio", command: process.execPath, args: [bundlePath, "mcp"] };
+  const existing = mcpConfig.mcpServers["crasp"];
+  if (existing && JSON.stringify(existing) === JSON.stringify(expected)) {
+    console.log(chalk.yellow("Skipped .mcp.json (already up to date)"));
     return;
   }
-
-  mcpConfig.mcpServers["crasp"] = {
-    type: "stdio",
-    command: resolveCraspBin(),
-    args: ["mcp"],
-  };
-
+  mcpConfig.mcpServers["crasp"] = expected;
   await writeFile(mcpJsonPath, `${JSON.stringify(mcpConfig, null, 2)}\n`);
   console.log(chalk.dim("Wrote .mcp.json with crasp MCP server"));
 }
@@ -249,66 +330,20 @@ async function setupMcpIntegration(root: string): Promise<void> {
 const HOOK_TOOLS = ["Write", "Edit", "Read", "Bash"] as const;
 type HookToolName = (typeof HOOK_TOOLS)[number];
 
-function isCraspHook(h: unknown, tool: HookToolName): boolean {
-  return (
-    typeof h === "object" &&
-    h !== null &&
-    (h as Record<string, unknown>).matcher === tool &&
-    JSON.stringify(h).includes("crasp")
-  );
-}
-
-function isNewFormatHook(h: unknown, tool: HookToolName): boolean {
-  return isCraspHook(h, tool) && JSON.stringify(h).includes("--hook-input");
-}
-
 const INBOUND_HOOK_TOOLS = ["Read", "Bash", "WebFetch", "WebSearch"] as const;
 type InboundHookToolName = (typeof INBOUND_HOOK_TOOLS)[number];
 
-// BROAD detector (D10): treat ANY crasp PostToolUse hook for this matcher as a
-// crasp post hook — do NOT require it to contain "--post". Used ONLY for
-// stale-hook cleanup/removal so a stale or older-format crasp post hook is still
-// dropped before we reinstall, avoiding duplicates.
-function isCraspPostHook(h: unknown, tool: InboundHookToolName): boolean {
-  return (
-    typeof h === "object" &&
-    h !== null &&
-    (h as Record<string, unknown>).matcher === tool &&
-    JSON.stringify(h).includes("crasp")
-  );
-}
-
-// STRICT detector (MED 6): a PROPERLY-installed post hook for this matcher must
-// carry `--hook-input <tool>` AND `--post` AND "crasp". Used for the
-// allPostInstalled gate so a stale crasp post hook lacking `--post` does NOT make
-// setup early-return — it gets repaired instead.
-function isInstalledPostHook(h: unknown, tool: InboundHookToolName): boolean {
-  if (typeof h !== "object" || h === null) return false;
-  if ((h as Record<string, unknown>).matcher !== tool) return false;
-  const s = JSON.stringify(h);
-  // MED 2(a): match a real `--post` flag token, not a substring — `s.includes
-  // ("--post")` also matches `--postpone`/`--postfix`.
-  return s.includes("crasp") && s.includes(`--hook-input ${tool}`) && hasPostFlag(s);
-}
-
-// A real `--post` flag token (followed by whitespace or end), not a prefix of a
-// longer flag like `--postpone`. The serialized form embeds the command as a JSON
-// string, so a trailing `"` also terminates the token.
-function hasPostFlag(commandString: string): boolean {
-  return /(?:^|\s)--post(?:\s|"|$)/.test(commandString);
-}
-
-async function ensureClaudeCodeHooks(root: string): Promise<void> {
+async function ensureClaudeCodeHooks(root: string, bundlePath: string): Promise<void> {
   const claudeDir = path.join(root, ".claude");
   const settingsPath = path.join(claudeDir, "settings.json");
 
   let settings: Record<string, unknown> = {};
   if (await exists(settingsPath)) {
     try {
-      const raw = await readFile(settingsPath, "utf8");
-      settings = JSON.parse(raw) as Record<string, unknown>;
+      settings = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
     } catch {
-      // malformed — start fresh
+      console.log(chalk.yellow(".claude/settings.json is not valid JSON — fix it and re-run setup (left untouched)"));
+      return;
     }
   }
 
@@ -316,77 +351,72 @@ async function ensureClaudeCodeHooks(root: string): Promise<void> {
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
   const postToolUse = (hooks.PostToolUse as unknown[] | undefined) ?? [];
 
-  const bin = resolveCraspBin();
-  const canonicalPostCommand = (tool: InboundHookToolName): string =>
-    `${bin} check --hook-input ${tool} --post`;
-  const isCanonicalPostHook = (h: unknown, tool: InboundHookToolName): boolean =>
-    typeof h === "object" &&
-    h !== null &&
-    (h as Record<string, unknown>).matcher === tool &&
-    JSON.stringify(h).includes(canonicalPostCommand(tool));
+  const preCommand = (tool: HookToolName): string =>
+    canonicalHookCommand(bundlePath, `check --hook-input ${tool}`);
+  const postCommand = (tool: InboundHookToolName): string =>
+    canonicalHookCommand(bundlePath, `check --hook-input ${tool} --post`);
 
-  // MED 2(b): ALWAYS run the broad post-hook cleanup BEFORE the early-return gate.
-  // Drop every crasp PostToolUse hook for these matchers that is NOT the canonical
-  // current `--post` hook (stale/old-format), and dedupe canonical hooks so each
-  // tool keeps exactly one. Third-party (non-crasp) hooks are preserved untouched.
-  // Without this, a tool that has BOTH a proper `--post` hook and a stale crasp
-  // post hook satisfies `allPostInstalled`, the gate returns early, and the
-  // duplicate survives.
-  const seenCanonical = new Set<InboundHookToolName>();
-  const cleanedPost = postToolUse.filter((h) => {
-    const tool = INBOUND_HOOK_TOOLS.find((t) => isCraspPostHook(h, t));
-    if (tool === undefined) return true; // not a crasp post hook → preserve
-    if (isCanonicalPostHook(h, tool)) {
-      if (seenCanonical.has(tool)) return false; // duplicate canonical → drop
-      seenCanonical.add(tool);
+  function entryCommand(h: unknown): string | undefined {
+    if (typeof h !== "object" || h === null) return undefined;
+    const inner = (h as { hooks?: Array<{ command?: string }> }).hooks;
+    return inner?.[0]?.command;
+  }
+  const matcherOf = (h: unknown): unknown =>
+    typeof h === "object" && h !== null ? (h as Record<string, unknown>).matcher : undefined;
+  // Broad stale detector: any crasp-shaped hook. The canonical command contains
+  // "crasp" (bundle path), so ALWAYS test canonical BEFORE classifying stale.
+  const isCraspShaped = (h: unknown): boolean => JSON.stringify(h).includes("crasp");
+
+  // PRE cleanup BEFORE the gate (mirrors the existing post-side MED 2(b) fix):
+  // drop stale crasp pre hooks and dedupe canonicals, so canonical+stale mixes
+  // can't survive via the early return.
+  const seenPre = new Set<HookToolName>();
+  const cleanedPre = preToolUse.filter((h) => {
+    const tool = HOOK_TOOLS.find((t) => matcherOf(h) === t);
+    if (tool === undefined) return true;               // different matcher → keep
+    if (entryCommand(h) === preCommand(tool)) {
+      if (seenPre.has(tool)) return false;             // duplicate canonical
+      seenPre.add(tool);
       return true;
     }
-    return false; // stale crasp post hook (old format / no --post) → drop
+    return !isCraspShaped(h);                          // stale crasp → drop; foreign → keep
   });
 
-  // Compute install state on the CLEANED set.
-  const allInstalled = HOOK_TOOLS.every((tool) =>
-    preToolUse.some((h) => isNewFormatHook(h, tool))
-  );
-  const allPostInstalled = INBOUND_HOOK_TOOLS.every((tool) =>
-    cleanedPost.some((h) => isInstalledPostHook(h, tool))
-  );
+  const seenPost = new Set<InboundHookToolName>();
+  const cleanedPost = postToolUse.filter((h) => {
+    const tool = INBOUND_HOOK_TOOLS.find((t) => matcherOf(h) === t);
+    if (tool === undefined) return true;
+    if (entryCommand(h) === postCommand(tool)) {
+      if (seenPost.has(tool)) return false;
+      seenPost.add(tool);
+      return true;
+    }
+    return !isCraspShaped(h);
+  });
 
-  // Append any missing canonical post hooks.
+  for (const tool of HOOK_TOOLS) {
+    if (!cleanedPre.some((h) => matcherOf(h) === tool && entryCommand(h) === preCommand(tool))) {
+      cleanedPre.push({ matcher: tool, hooks: [{ type: "command", command: preCommand(tool) }] });
+    }
+  }
   for (const tool of INBOUND_HOOK_TOOLS) {
-    if (!cleanedPost.some((h) => isInstalledPostHook(h, tool))) {
-      cleanedPost.push({
-        matcher: tool,
-        hooks: [{ type: "command", command: canonicalPostCommand(tool) }],
-      });
+    if (!cleanedPost.some((h) => matcherOf(h) === tool && entryCommand(h) === postCommand(tool))) {
+      cleanedPost.push({ matcher: tool, hooks: [{ type: "command", command: postCommand(tool) }] });
     }
   }
 
+  const preChanged =
+    cleanedPre.length !== preToolUse.length || cleanedPre.some((h, i) => h !== preToolUse[i]);
   const postChanged =
-    cleanedPost.length !== postToolUse.length ||
-    cleanedPost.some((h, i) => h !== postToolUse[i]);
+    cleanedPost.length !== postToolUse.length || cleanedPost.some((h, i) => h !== postToolUse[i]);
 
-  // No-op only if PRE is fully installed AND POST needed no changes.
-  if (allInstalled && allPostInstalled && !postChanged) {
+  if (!preChanged && !postChanged) {
     console.log(chalk.yellow("Skipped .claude/settings.json hooks (already installed)"));
     return;
   }
 
-  // Remove stale crasp hooks for Write/Edit/Read (old format or partial install)
-  const filteredHooks = preToolUse.filter(
-    (h) => !HOOK_TOOLS.some((tool) => isCraspHook(h, tool))
-  );
-
-  for (const tool of HOOK_TOOLS) {
-    filteredHooks.push({
-      matcher: tool,
-      hooks: [{ type: "command", command: `${bin} check --hook-input ${tool}` }],
-    });
-  }
-
-  hooks.PreToolUse = filteredHooks;
+  hooks.PreToolUse = cleanedPre;
   hooks.PostToolUse = cleanedPost;
-
   settings.hooks = hooks;
 
   await mkdir(claudeDir, { recursive: true });
