@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CLI_VERSION } from "../../src/version.js";
@@ -102,5 +102,21 @@ describe("status installHealth", () => {
       const health = healthOf(run(["status"], ctx.project, ctx.home).stdout);
       expect(health.ok).toBe(true);
     } finally { await rm(ctx.root, { recursive: true, force: true }); }
+  });
+
+  it("reports an unreadable pre-commit hook instead of crashing", async () => {
+    const ctx = await makeCtx();
+    try {
+      run(["setup"], ctx.project, ctx.home);
+      const hookPath = path.join(ctx.project, ".git", "hooks", "pre-commit");
+      await chmod(hookPath, 0o000);
+      const result = run(["status"], ctx.project, ctx.home);
+      expect(result.status).toBe(0);
+      const health = healthOf(result.stdout);
+      expect(health.ok).toBe(false);
+      expect(health.problems.join(" ")).toContain("pre-commit hook is unreadable");
+    } finally {
+      await rm(ctx.root, { recursive: true, force: true });
+    }
   });
 });

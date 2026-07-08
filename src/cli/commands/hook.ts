@@ -40,17 +40,26 @@ export async function getHookStatus(dir = process.cwd()): Promise<HookStatus> {
     };
   }
 
-  const raw = await readFile(hookPath, "utf8");
-  const lines = raw.split(/\r?\n/);
-  const managed = lines[1] === sentinel;
-  const healthy = managed && lines[0] === "#!/usr/bin/env sh";
+  try {
+    const raw = await readFile(hookPath, "utf8");
+    const lines = raw.split(/\r?\n/);
+    const managed = lines[1] === sentinel;
+    const healthy = managed && lines[0] === "#!/usr/bin/env sh";
 
-  return {
-    installed: true,
-    managed,
-    path: hookPath,
-    healthy
-  };
+    return {
+      installed: true,
+      managed,
+      path: hookPath,
+      healthy
+    };
+  } catch {
+    return {
+      installed: true,
+      managed: false,
+      path: hookPath,
+      healthy: false
+    };
+  }
 }
 
 export async function installHook(
@@ -65,10 +74,15 @@ export async function installHook(
   const hookPath = path.join(dir, ".git", "hooks", "pre-commit");
 
   if (await exists(hookPath)) {
-    const raw = await readFile(hookPath, "utf8");
-    const lines = raw.split(/\r?\n/);
-    if (lines[1] !== sentinel) {
-      console.log(chalk.yellow("Pre-commit hook already exists and is not managed by Crasp. Run `crasp hook install` to overwrite it manually."));
+    try {
+      const raw = await readFile(hookPath, "utf8");
+      const lines = raw.split(/\r?\n/);
+      if (lines[1] !== sentinel) {
+        console.log(chalk.yellow("Pre-commit hook already exists and is not managed by Crasp. Run `crasp hook install` to overwrite it manually."));
+        return;
+      }
+    } catch {
+      console.log(chalk.yellow("Pre-commit hook exists but is unreadable. Run `crasp hook install` to overwrite it manually."));
       return;
     }
   }
