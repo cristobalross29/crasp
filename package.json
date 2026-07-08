@@ -1,5 +1,5 @@
 {
-  "name": "@cristobalross29/crasp",
+  "name": "@crasp/cli",
   "version": "0.2.1",
   "description": "Local-first security layer for Claude Code — intercepts Write/Edit/Read/Bash (PreToolUse) and scans tool results (PostToolUse) to block leaked secrets, dangerous commands, prompt injection, and policy violations",
   "type": "module",

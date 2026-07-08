@@ -47,7 +47,7 @@ describe("status installHealth", () => {
       await rm(ctx.bundle);
       const health = healthOf(run(["status"], ctx.project, ctx.home).stdout);
       expect(health.ok).toBe(false);
-      expect(health.problems.join(" ")).toContain("re-run: npx @cristobalross29/crasp setup");
+      expect(health.problems.join(" ")).toContain("re-run: npx @crasp/cli setup");
     } finally { await rm(ctx.root, { recursive: true, force: true }); }
   });
 

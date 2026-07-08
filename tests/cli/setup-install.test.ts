@@ -427,7 +427,7 @@ describe("setup git pre-commit hook", () => {
       expect(hook).toContain(`CRASP_BIN='${ctx.bundle}'`);
       expect(hook).toContain('command -v node');
       expect(hook).toContain('exec "$CRASP_NODE" "$CRASP_BIN" check --staged');
-      expect(hook).toContain("re-run: npx @cristobalross29/crasp setup");
+      expect(hook).toContain("re-run: npx @crasp/cli setup");
     } finally { await cleanup(ctx); }
   });
 

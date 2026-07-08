@@ -2,9 +2,12 @@
 
 > Local-first security guardrail for Claude Code.
 
-[![npm](https://img.shields.io/npm/v/@cristobalross29/crasp)](https://www.npmjs.com/package/@cristobalross29/crasp)
+[![npm](https://img.shields.io/npm/v/@crasp/cli)](https://www.npmjs.com/package/@crasp/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+
+> Previously published as `@cristobalross29/crasp` — that package is deprecated;
+> `@crasp/cli` is the same project.
 
 Crasp intercepts every file operation Claude Code makes — Write, Edit, Read, and Bash
 commands — and blocks or flags anything that violates your policy before it happens.
@@ -13,7 +16,7 @@ No cloud. No tracking. Entirely on your machine.
 ## One command to get started
 
 ```sh
-npx @cristobalross29/crasp setup
+npx @crasp/cli setup
 ```
 
 Run that once inside any Claude Code project. The first run asks npm's usual
@@ -38,10 +41,10 @@ Code prompts you. That's it — you do not need to run any other command.
 
 You never run `crasp mcp` yourself — Claude Code handles that automatically via `.mcp.json`.
 
-`npx @cristobalross29/crasp@latest setup` run in **any** project updates the one shared bundle at
+`npx @crasp/cli@latest setup` run in **any** project updates the one shared bundle at
 `~/.crasp/bin/crasp.js` — every other project on the machine picks up the new version
 immediately, no need to re-run setup elsewhere. Always include `@latest` when you mean to
-update: a bare `npx @cristobalross29/crasp setup` can reuse a cached older copy and silently no-op.
+update: a bare `npx @crasp/cli setup` can reuse a cached older copy and silently no-op.
 
 ## What it does once running
 
@@ -151,8 +154,8 @@ exceptions:
 Command patterns are regular expressions matched against the whole command — anchor
 them (`^…$`) so a permissive pattern doesn't approve more than you intend.
 
-**Upgrading an existing install?** Re-run `npx @cristobalross29/crasp@latest setup` — hooks and the
-shared bundle update automatically. Run `npx @cristobalross29/crasp@latest setup --force` if you also want
+**Upgrading an existing install?** Re-run `npx @crasp/cli@latest setup` — hooks and the
+shared bundle update automatically. Run `npx @crasp/cli@latest setup --force` if you also want
 the CLAUDE.md section text refreshed.
 
 ## Day-to-day commands
@@ -240,19 +243,19 @@ crasp report <run-id> --format html --out report.html
 
 ```sh
 # Try without installing
-npx @cristobalross29/crasp setup
+npx @crasp/cli setup
 
 # Project install — pins the CLI version for direct usage (e.g. `crasp check --staged`
 # in CI), NOT the hook layer: hooks always run from the shared ~/.crasp/bin/crasp.js
 # that `crasp setup` installs, regardless of any devDependency
-npm install --save-dev @cristobalross29/crasp
+npm install --save-dev @crasp/cli
 
 # Global install — use the CLI directly in any project without npx
-npm install -g @cristobalross29/crasp
+npm install -g @crasp/cli
 ```
 
 Requires Node.js 20 or newer. Crasp bundles all of its dependencies into a single
-self-contained file, so `npx @cristobalross29/crasp` and every install path pull zero transitive
+self-contained file, so `npx @crasp/cli` and every install path pull zero transitive
 dependencies at install time.
 
 ## Removing crasp

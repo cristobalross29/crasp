@@ -24,16 +24,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `setup --force` reinstalls the shared bundle unconditionally.
 
 ### Changed
+- **Package moved to `@crasp/cli`** (was `@cristobalross29/crasp`; the unscoped
+  name `crasp` is reserved on npm). The installed command is still `crasp`.
 - The CLI is a fully self-contained single-file bundle; `crasp setup` installs
   it to `~/.crasp/bin/crasp.js` (atomic, version-aware) and wires all hooks
   with absolute node+bundle paths plus a `command -v node` fallback — a pure
-  `npx @cristobalross29/crasp setup` now yields verified protection with no global install.
+  `npx @crasp/cli setup` now yields verified protection with no global install.
 - Re-running setup migrates any older crasp hook format and warns when a stale
   global crasp binary is still on PATH.
 - Pre-commit hook skips (fail-open, with a message) when its recorded paths
   vanish; `crasp status` flags it.
 - The committed CLAUDE.md section now tells fresh-clone teammates to run
-  `npx @cristobalross29/crasp setup` instead of claiming protection is active.
+  `npx @crasp/cli setup` instead of claiming protection is active.
 - **Node.js 20+ is now required** (`engines: >=20`; commander 14 requires it and
   Node 18 is end-of-life). All runtime dependencies are bundled into the single
   CLI file and moved out of the published `dependencies`, so installing `crasp`

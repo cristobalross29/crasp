@@ -97,7 +97,7 @@ export async function installHook(
     '[ -x "$CRASP_NODE" ] || CRASP_NODE="$(command -v node || true)"',
     "",
     'if [ ! -x "$CRASP_NODE" ] || [ ! -f "$CRASP_BIN" ]; then',
-    '  echo "[crasp] installed binary missing — skipping pre-commit check (re-run: npx @cristobalross29/crasp setup)"',
+    '  echo "[crasp] installed binary missing — skipping pre-commit check (re-run: npx @crasp/cli setup)"',
     "  exit 0",
     "fi",
     "",
