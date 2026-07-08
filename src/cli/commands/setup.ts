@@ -223,10 +223,12 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
       await verifyWiredHook(root);
       console.log(chalk.dim("Verified: the exact hook command written to .claude/settings.json works."));
     } catch (error) {
+      const stderr = (error as { stderr?: Buffer | string }).stderr?.toString().trim();
       console.error(chalk.red(
         `\nCrasp wiring verification failed: ${error instanceof Error ? error.message : String(error)}\n` +
         `Hook files were written but could not be confirmed working.\n` +
-        `Fix: re-run \`npx crasp@latest setup\`; if it persists, file an issue with the message above.`
+        `Fix: re-run \`npx crasp@latest setup\`; if it persists, file an issue with the message above.` +
+        (stderr ? `\nHook stderr: ${stderr}` : "")
       ));
       process.exitCode = 1;
       return;
@@ -346,9 +348,11 @@ export async function verifyWiredHook(projectRoot: string): Promise<void> {
     hooks?: { PreToolUse?: Array<{ matcher?: string; hooks?: Array<{ command?: string }> }> };
   };
   const command = settings.hooks?.PreToolUse
-    ?.find((h) => h.matcher === "Write")
-    ?.hooks?.[0]?.command;
-  if (!command || !command.includes("crasp")) {
+    ?.filter((h) => h.matcher === "Write")
+    .flatMap((h) => h.hooks ?? [])
+    .map((x) => x.command)
+    .find((c): c is string => typeof c === "string" && c.includes("crasp"));
+  if (!command) {
     throw new Error("no crasp Write hook found in .claude/settings.json after wiring");
   }
   const tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-verify-"));

@@ -268,6 +268,32 @@ describe("setup self-verification", () => {
     } finally { await cleanup(ctx); }
   });
 
+  it("verifies successfully when a foreign Write hook precedes the crasp hook", async () => {
+    const ctx = await makeCtx();
+    try {
+      const claudeDir = path.join(ctx.project, ".claude");
+      await mkdir(claudeDir, { recursive: true });
+      await writeFile(
+        path.join(claudeDir, "settings.json"),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              { matcher: "Write", hooks: [{ type: "command", command: "prettier --write" }] },
+            ],
+          },
+        })
+      );
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("protection verified");
+      const settings = JSON.parse(
+        await readFile(path.join(claudeDir, "settings.json"), "utf8")
+      ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+      const commands = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));
+      expect(commands).toContain("prettier --write");
+    } finally { await cleanup(ctx); }
+  });
+
   it("fails wiring verification (no banner, no exit-0) when settings.json is malformed so wiring is skipped", async () => {
     const ctx = await makeCtx();
     try {
