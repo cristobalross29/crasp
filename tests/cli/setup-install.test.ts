@@ -220,3 +220,52 @@ describe("setup installs bundle and wires self-healing absolute-path hooks", () 
     } finally { await cleanup(ctx); }
   });
 });
+
+describe("setup git pre-commit hook", () => {
+  it("skips when the project has no .git directory", async () => {
+    const ctx = await makeCtx();
+    try {
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("No git repository");
+      await expect(access(path.join(ctx.project, ".git"))).rejects.toThrow();
+    } finally { await cleanup(ctx); }
+  });
+
+  it("writes absolute node+bundle paths with fallback lookup and skip message", async () => {
+    const ctx = await makeCtx();
+    try {
+      await mkdir(path.join(ctx.project, ".git"), { recursive: true });
+      runSetup(ctx);
+      const hook = await readFile(
+        path.join(ctx.project, ".git", "hooks", "pre-commit"), "utf8"
+      );
+      expect(hook.split("\n")[1]).toBe("# managed-by: crasp");
+      expect(hook).toContain(`CRASP_NODE='${process.execPath}'`);
+      expect(hook).toContain(`CRASP_BIN='${ctx.bundle}'`);
+      expect(hook).toContain('command -v node');
+      expect(hook).toContain('exec "$CRASP_NODE" "$CRASP_BIN" check --staged');
+      expect(hook).toContain("re-run: npx crasp setup");
+    } finally { await cleanup(ctx); }
+  });
+
+  it("upgrades an old managed hook but never touches a foreign one", async () => {
+    const ctx = await makeCtx();
+    try {
+      const hooksDir = path.join(ctx.project, ".git", "hooks");
+      await mkdir(hooksDir, { recursive: true });
+      await writeFile(
+        path.join(hooksDir, "pre-commit"),
+        "#!/usr/bin/env sh\n# managed-by: crasp\n\nexec crasp check --staged\n"
+      );
+      runSetup(ctx);
+      const managed = await readFile(path.join(hooksDir, "pre-commit"), "utf8");
+      expect(managed).toContain('"$CRASP_NODE" "$CRASP_BIN"');
+
+      await writeFile(path.join(hooksDir, "pre-commit"), "#!/bin/sh\nmy-own-hook\n");
+      runSetup(ctx);
+      const foreign = await readFile(path.join(hooksDir, "pre-commit"), "utf8");
+      expect(foreign).toContain("my-own-hook");
+    } finally { await cleanup(ctx); }
+  });
+});

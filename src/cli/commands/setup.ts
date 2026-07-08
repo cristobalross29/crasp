@@ -170,7 +170,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   await ensureGitignoreEntry(root);
 
   // Pre-commit hook
-  await installHook(root);
+  await installHook(root, bundlePath);
   await markHooksEnabled(root);
 
   // Claude Code MCP integration

@@ -35,6 +35,7 @@ describe("setupCommand", () => {
   it("creates config and ensures .crasp/ is ignored", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-setup-"));
     const craspHome = await makeCraspHome();
+    await mkdir(path.join(tempDir, ".git"), { recursive: true });
 
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(tempDir);
