@@ -99,6 +99,12 @@ export interface HookStatus {
   healthy?: boolean;
 }
 
+export interface InstallHealth {
+  ok: boolean;
+  bundleVersion: string | null;
+  problems: string[];
+}
+
 export interface ProjectStatus {
   initialized: boolean;
   config?: CraspConfig;
@@ -106,6 +112,7 @@ export interface ProjectStatus {
   policyPath?: string;
   scenarioCount: number;
   runCount: number;
+  installHealth: InstallHealth;
 }
 
 export interface Trace {
