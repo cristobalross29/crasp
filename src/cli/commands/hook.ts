@@ -1,13 +1,17 @@
 import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import chalk from "chalk";
+import { craspBundlePath, shq } from "../../core/install/index.js";
 import type { HookStatus } from "../../types/index.js";
 
 const sentinel = "# managed-by: crasp";
 
 export async function hookCommand(action: string): Promise<void> {
   if (action === "install") {
-    await installHook();
+    const { resolveInstalledBundle } = await import("./setup.js");
+    const { bundlePath } = await resolveInstalledBundle();
+    await installHook(process.cwd(), bundlePath);
     return;
   }
 
@@ -36,27 +40,49 @@ export async function getHookStatus(dir = process.cwd()): Promise<HookStatus> {
     };
   }
 
-  const raw = await readFile(hookPath, "utf8");
-  const lines = raw.split(/\r?\n/);
-  const managed = lines[1] === sentinel;
-  const healthy = managed && lines[0] === "#!/usr/bin/env sh";
+  try {
+    const raw = await readFile(hookPath, "utf8");
+    const lines = raw.split(/\r?\n/);
+    const managed = lines[1] === sentinel;
+    const healthy = managed && lines[0] === "#!/usr/bin/env sh";
 
-  return {
-    installed: true,
-    managed,
-    path: hookPath,
-    healthy
-  };
+    return {
+      installed: true,
+      managed,
+      path: hookPath,
+      healthy
+    };
+  } catch {
+    return {
+      installed: true,
+      managed: false,
+      path: hookPath,
+      healthy: false
+    };
+  }
 }
 
-export async function installHook(dir = process.cwd()): Promise<void> {
+export async function installHook(
+  dir = process.cwd(),
+  bundlePath = craspBundlePath(os.homedir())
+): Promise<void> {
+  if (!(await exists(path.join(dir, ".git")))) {
+    console.log(chalk.yellow("No git repository — skipped pre-commit hook (re-run setup after git init)"));
+    return;
+  }
+
   const hookPath = path.join(dir, ".git", "hooks", "pre-commit");
 
   if (await exists(hookPath)) {
-    const raw = await readFile(hookPath, "utf8");
-    const lines = raw.split(/\r?\n/);
-    if (lines[1] !== sentinel) {
-      console.log(chalk.yellow("Pre-commit hook already exists and is not managed by Crasp. Run `crasp hook install` to overwrite it manually."));
+    try {
+      const raw = await readFile(hookPath, "utf8");
+      const lines = raw.split(/\r?\n/);
+      if (lines[1] !== sentinel) {
+        console.log(chalk.yellow("Pre-commit hook already exists and is not managed by Crasp. Run `crasp hook install` to overwrite it manually."));
+        return;
+      }
+    } catch {
+      console.log(chalk.yellow("Pre-commit hook exists but is unreadable. Run `crasp hook install` to overwrite it manually."));
       return;
     }
   }
@@ -65,12 +91,17 @@ export async function installHook(dir = process.cwd()): Promise<void> {
     "#!/usr/bin/env sh",
     sentinel,
     "",
-    "if ! command -v crasp >/dev/null 2>&1; then",
-    '  echo "[crasp] not found on PATH — skipping pre-commit check"',
+    `CRASP_NODE=${shq(process.execPath)}`,
+    `CRASP_BIN=${shq(bundlePath)}`,
+    "",
+    '[ -x "$CRASP_NODE" ] || CRASP_NODE="$(command -v node || true)"',
+    "",
+    'if [ ! -x "$CRASP_NODE" ] || [ ! -f "$CRASP_BIN" ]; then',
+    '  echo "[crasp] installed binary missing — skipping pre-commit check (re-run: npx crasp setup)"',
     "  exit 0",
     "fi",
     "",
-    "exec crasp check --staged",
+    'exec "$CRASP_NODE" "$CRASP_BIN" check --staged',
   ].join("\n");
 
   await mkdir(path.dirname(hookPath), { recursive: true });

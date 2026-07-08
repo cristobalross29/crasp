@@ -3,10 +3,28 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/core/config/index.js";
-import { setupCommand, ensureClaudeMdSection } from "../../src/cli/commands/setup.js";
+import {
+  setupCommand,
+  ensureClaudeMdSection,
+  canonicalHookCommand,
+} from "../../src/cli/commands/setup.js";
 import { getHookStatus } from "../../src/cli/commands/hook.js";
 
 const originalCwd = process.cwd();
+const CLI = path.resolve("dist/index.js");
+
+// setupCommand runs in-process here, so import.meta.url would resolve to the TS
+// source — copying it into the developer's real ~/.crasp. Inject a spawnable
+// bundle (the built CLI) and a throwaway craspHome per test instead.
+async function makeCraspHome(): Promise<string> {
+  return mkdtemp(path.join(os.tmpdir(), "crasp-home-"));
+}
+function injected(craspHome: string) {
+  return { bundleSourcePath: CLI, craspHome, skipVerify: true } as const;
+}
+function bundleIn(craspHome: string): string {
+  return path.join(craspHome, "bin", "crasp.js");
+}
 
 describe("setupCommand", () => {
   afterEach(() => {
@@ -16,21 +34,29 @@ describe("setupCommand", () => {
 
   it("creates config and ensures .crasp/ is ignored", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "crasp-setup-"));
+    const craspHome = await makeCraspHome();
+    await mkdir(path.join(tempDir, ".git"), { recursive: true });
 
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(tempDir);
 
-    await setupCommand();
+    try {
+      await setupCommand(injected(craspHome));
 
-    const config = await loadConfig(tempDir);
-    const gitignore = await readFile(path.join(tempDir, ".gitignore"), "utf8");
-    const hookStatus = await getHookStatus(tempDir);
+      const config = await loadConfig(tempDir);
+      const gitignore = await readFile(path.join(tempDir, ".gitignore"), "utf8");
+      const hookStatus = await getHookStatus(tempDir);
 
-    expect(config?.builtinPolicies).toContain("crasp-builtin-security");
-    expect(config?.hooksEnabled).toBe(true);
-    expect(gitignore).toContain(".crasp/");
-    expect(gitignore).toContain(".claude/settings.json");
-    expect(hookStatus.healthy).toBe(true);
+      expect(config?.builtinPolicies).toContain("crasp-builtin-security");
+      expect(config?.hooksEnabled).toBe(true);
+      expect(gitignore).toContain(".crasp/");
+      expect(gitignore).toContain(".claude/settings.json");
+      expect(hookStatus.healthy).toBe(true);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(tempDir, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
+    }
   });
 
   it("writes crasp MCP entry to .mcp.json", async () => {
@@ -38,11 +64,12 @@ describe("setupCommand", () => {
       path.join(os.tmpdir(), "af-setup-mcp-test-")
     );
 
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
 
     try {
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const raw = await readFile(path.join(freshRoot, ".mcp.json"), "utf8");
       const mcpConfig = JSON.parse(raw) as {
         mcpServers: Record<string, unknown>;
@@ -53,21 +80,23 @@ describe("setupCommand", () => {
       >;
       expect(entry).toBeDefined();
       expect(entry["type"]).toBe("stdio");
-      expect(typeof entry["command"]).toBe("string");
-      expect((entry["command"] as string).length).toBeGreaterThan(0);
-      expect(entry["args"]).toEqual(["mcp"]);
+      expect(entry["command"]).toBe(process.execPath);
+      expect(entry["args"]).toEqual([bundleIn(craspHome), "mcp"]);
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
   it("writes PreToolUse hooks for Write, Edit, Read, and Bash to .claude/settings.json", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-hook-test-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
+      await setupCommand(injected(craspHome));
+      const bundle = bundleIn(craspHome);
       const raw = await readFile(
         path.join(freshRoot, ".claude", "settings.json"),
         "utf8"
@@ -82,30 +111,30 @@ describe("setupCommand", () => {
       const matchers = preToolUse.map((h: Record<string, unknown>) => h.matcher);
       expect(matchers).toEqual(expect.arrayContaining(["Write", "Edit", "Read", "Bash"]));
 
-      const bashHook = preToolUse.find((h: Record<string, unknown>) => h.matcher === "Bash");
-      expect(JSON.stringify(bashHook)).toContain("check --hook-input Bash");
-
       for (const tool of ["Write", "Edit", "Read", "Bash"] as const) {
         const hook = preToolUse.find((h) => h.matcher === tool);
         expect(hook, `${tool} hook should be installed`).toBeDefined();
         const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
         expect(hookDef.type).toBe("command");
-        expect(hookDef.command as string).toContain("crasp");
-        expect(hookDef.command as string).toContain("--hook-input");
-        expect(hookDef.command as string).toContain(tool);
+        expect(hookDef.command).toBe(
+          canonicalHookCommand(bundle, `check --hook-input ${tool}`)
+        );
       }
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
   it("writes PostToolUse hooks for Read, Bash, WebFetch, and WebSearch", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-hook-test-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
+      await setupCommand(injected(craspHome));
+      const bundle = bundleIn(craspHome);
       const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown>;
@@ -120,13 +149,14 @@ describe("setupCommand", () => {
         const hook = postToolUse.find((h) => h.matcher === tool);
         expect(hook, `${tool} post hook`).toBeDefined();
         const hookDef = (hook!.hooks as Array<Record<string, unknown>>)[0];
-        expect(hookDef.command as string).toContain("--hook-input");
-        expect(hookDef.command as string).toContain(tool);
-        expect(hookDef.command as string).toContain("--post");
+        expect(hookDef.command).toBe(
+          canonicalHookCommand(bundle, `check --hook-input ${tool} --post`)
+        );
       }
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
@@ -136,11 +166,12 @@ describe("setupCommand", () => {
   // the combined guard must not short-circuit before Post is present).
   it("installs PostToolUse hooks even when PreToolUse hooks already exist (run twice)", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-idempotent-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
-      await setupCommand(); // second run must be a no-op that still leaves Post hooks present
+      await setupCommand(injected(craspHome));
+      await setupCommand(injected(craspHome)); // second run must be a no-op that still leaves Post hooks present
       const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown>;
@@ -153,6 +184,7 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
@@ -160,6 +192,7 @@ describe("setupCommand", () => {
   // shape an existing F1 user has), then run setup — Post hooks must appear.
   it("adds PostToolUse hooks to a settings.json that has only PreToolUse hooks", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-seed-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
@@ -173,7 +206,7 @@ describe("setupCommand", () => {
         },
       };
       await writeFile(path.join(freshRoot, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown>;
@@ -182,6 +215,7 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
@@ -190,6 +224,7 @@ describe("setupCommand", () => {
   // duplicating, and must preserve third-party hooks.
   it("repairs a stale crasp post hook missing --post and preserves third-party hooks", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-stale-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
@@ -198,8 +233,8 @@ describe("setupCommand", () => {
         hooks: {
           PostToolUse: [
             // Stale crasp post hooks for ALL inbound tools — each has "crasp" +
-            // matcher but NO --post. The broad check would treat these as
-            // installed and early-return, never repairing them (the MED 6 bug).
+            // matcher but NO --post. These are not the canonical command, so setup
+            // must drop and re-install them (never early-return over a stale hook).
             ...["Read", "Bash", "WebFetch", "WebSearch"].map((tool) => ({
               matcher: tool,
               hooks: [{ type: "command", command: `crasp check --hook-input ${tool}` }],
@@ -213,7 +248,7 @@ describe("setupCommand", () => {
         },
       };
       await writeFile(path.join(freshRoot, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown>;
@@ -247,6 +282,7 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
@@ -257,6 +293,7 @@ describe("setupCommand", () => {
   // tool, third-party preserved.
   it("removes a duplicate stale crasp post hook even when a proper --post hook exists", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-post-dup-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
@@ -284,7 +321,7 @@ describe("setupCommand", () => {
         },
       };
       await writeFile(path.join(freshRoot, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const raw = await readFile(path.join(freshRoot, ".claude", "settings.json"), "utf8");
       const settings = JSON.parse(raw) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown>;
@@ -316,15 +353,17 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
   it("starter policy includes commented exceptions block", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-policy-exceptions-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const policy = await readFile(path.join(freshRoot, "crasp.policy.yml"), "utf8");
       expect(policy).toContain("# exceptions:");
       expect(policy).toContain("# Exceptions:");
@@ -333,15 +372,17 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
   it("writes CLAUDE.md documentation block", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-claude-md-int-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
+      await setupCommand(injected(craspHome));
       const content = await readFile(path.join(freshRoot, "CLAUDE.md"), "utf8");
       expect(content).toContain("<!-- crasp:start -->");
       expect(content).toContain("<!-- crasp:end -->");
@@ -349,16 +390,18 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 
   it("does not duplicate hook or CLAUDE.md section on second run", async () => {
     const freshRoot = await mkdtemp(path.join(os.tmpdir(), "af-idempotent-"));
+    const craspHome = await makeCraspHome();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(freshRoot);
     try {
-      await setupCommand();
-      await setupCommand();
+      await setupCommand(injected(craspHome));
+      await setupCommand(injected(craspHome));
       const claudeMd = await readFile(path.join(freshRoot, "CLAUDE.md"), "utf8");
       const sentinelCount = (claudeMd.match(/<!-- crasp:start -->/g) ?? []).length;
       expect(sentinelCount).toBe(1);
@@ -379,6 +422,7 @@ describe("setupCommand", () => {
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });
+      await rm(craspHome, { recursive: true, force: true });
     }
   });
 });

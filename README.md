@@ -2,9 +2,12 @@
 
 > Local-first security guardrail for Claude Code.
 
-[![npm](https://img.shields.io/npm/v/@cristobalross29/crasp)](https://www.npmjs.com/package/@cristobalross29/crasp)
+[![npm](https://img.shields.io/npm/v/crasp)](https://www.npmjs.com/package/crasp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![node >=18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+[![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+
+> Previously published as @cristobalross29/crasp — that package is deprecated; crasp is
+> the same project.
 
 Crasp intercepts every file operation Claude Code makes — Write, Edit, Read, and Bash
 commands — and blocks or flags anything that violates your policy before it happens.
@@ -13,23 +16,35 @@ No cloud. No tracking. Entirely on your machine.
 ## One command to get started
 
 ```sh
-npx @cristobalross29/crasp setup
+npx crasp setup
 ```
 
-Run that once inside any Claude Code project. Then open Claude Code. That's it —
-protection is live. You do not need to run any other command.
+Run that once inside any Claude Code project. The first run asks npm's usual
+"Ok to proceed? (y)" prompt and does a short one-time download; every run after that
+reuses npm's cache. Setup installs a self-contained copy of crasp to `~/.crasp/bin/crasp.js`
+and proves it actually blocks a secret — twice — before it tells you you're protected (see
+below). Once it reports success: **restart any Claude Code session already open in this
+project** (hooks load at session startup) and **approve the crasp MCP server** when Claude
+Code prompts you. That's it — you do not need to run any other command.
 
 **What `crasp setup` wires up automatically:**
 
 | What | How |
 | --- | --- |
-| Hook guard | Registers itself in `.claude/settings.json` so Claude Code calls Crasp before every Write, Edit, Read, and Bash command |
+| Local binary | Copies a self-contained bundle to `~/.crasp/bin/crasp.js` (atomic, version-aware — shared by every project on the machine). Hooks call this file by absolute path, so they work with no PATH or `npx` dependency at runtime |
+| Hook guard | Registers itself in `.claude/settings.json` (absolute node + bundle paths, with a `command -v node` fallback) so Claude Code calls Crasp before every Write, Edit, Read, and Bash command |
 | MCP server | Adds itself to `.mcp.json` so Claude Code starts the Crasp MCP server automatically in the background |
-| Git hook | Installs a pre-commit hook that scans staged files before every commit |
+| Git hook | Installs a pre-commit hook (absolute paths, same fallback) that scans staged files before every commit |
 | Starter policy | Writes `crasp.policy.yml` with a default credential-theft rule you can extend |
 | Starter scenarios | Writes three example scenario YAMLs in `scenarios/` |
+| Self-verification | Two stages, both must pass or setup exits non-zero with nothing left wired: (1) before touching the project, spawns the installed bundle directly and confirms it blocks a synthetic secret — a broken pre-existing install is auto-repaired; (2) after wiring, reads the exact hook command back out of `.claude/settings.json` and runs it through a real shell to confirm it works as written |
 
 You never run `crasp mcp` yourself — Claude Code handles that automatically via `.mcp.json`.
+
+`npx crasp@latest setup` run in **any** project updates the one shared bundle at
+`~/.crasp/bin/crasp.js` — every other project on the machine picks up the new version
+immediately, no need to re-run setup elsewhere. Always include `@latest` when you mean to
+update: a bare `npx crasp setup` can reuse a cached older copy and silently no-op.
 
 ## What it does once running
 
@@ -82,7 +97,8 @@ Always active. No configuration needed.
 | `secret-slack` | critical | Slack bot/user/app tokens (`xox…`) |
 | `secret-slack-webhook` | critical | Slack incoming webhook URLs |
 | `secret-sendgrid` | critical | SendGrid API keys (`SG.…`) |
-| `secret-twilio` | critical | Twilio SIDs/keys (`AC…`, `SK…` 32 hex) |
+| `secret-twilio` | critical | Twilio API key SIDs (`SK…` 32 hex) |
+| `secret-twilio-sid` | low | Twilio Account SIDs (`AC…` — semi-public, advisory only) |
 | `secret-huggingface` | critical | HuggingFace tokens (`hf_…`) |
 | `secret-npm` | critical | npm automation tokens (`npm_…`) |
 | `secret-pypi` | critical | PyPI API tokens (`pypi-…`) |
@@ -138,9 +154,9 @@ exceptions:
 Command patterns are regular expressions matched against the whole command — anchor
 them (`^…$`) so a permissive pattern doesn't approve more than you intend.
 
-**Upgrading from a pre-Bash install?** Re-run `crasp setup` — hooks update
-automatically. Run `crasp setup --force` if you also want the CLAUDE.md section text
-refreshed.
+**Upgrading an existing install?** Re-run `npx crasp@latest setup` — hooks and the
+shared bundle update automatically. Run `npx crasp@latest setup --force` if you also want
+the CLAUDE.md section text refreshed.
 
 ## Day-to-day commands
 
@@ -227,27 +243,43 @@ crasp report <run-id> --format html --out report.html
 
 ```sh
 # Try without installing
-npx @cristobalross29/crasp setup
+npx crasp setup
 
-# Project install — pins version for CI and team reproducibility
-npm install --save-dev @cristobalross29/crasp
+# Project install — pins the CLI version for direct usage (e.g. `crasp check --staged`
+# in CI), NOT the hook layer: hooks always run from the shared ~/.crasp/bin/crasp.js
+# that `crasp setup` installs, regardless of any devDependency
+npm install --save-dev crasp
 
-# Global install — use in any project
-npm install -g @cristobalross29/crasp
+# Global install — use the CLI directly in any project without npx
+npm install -g crasp
 ```
 
-Requires Node.js 18 or newer. No other dependencies.
+Requires Node.js 20 or newer. Crasp bundles all of its dependencies into a single
+self-contained file, so `npx crasp` and every install path pull zero transitive
+dependencies at install time.
+
+## Removing crasp
+
+1. **In each project:** remove the crasp entries from `.claude/settings.json` (the
+   `PreToolUse`/`PostToolUse` hook entries) and `.mcp.json`, delete the
+   `<!-- crasp:start -->` … `<!-- crasp:end -->` block from `CLAUDE.md`, and run
+   `crasp hook uninstall` to remove the git pre-commit hook.
+2. **Machine-wide, once you've cleaned every project:** delete `~/.crasp/`.
+
+Do these in order. If you delete `~/.crasp/` first, any project you haven't cleaned yet
+is left with hooks pointing at a binary that no longer exists — those hooks will error
+until you clean the project's own config.
 
 ## Why it is safe to use
 
 - **No network calls.** Every check runs locally. There is no telemetry, no API, no
   cloud service.
 - **No elevated permissions.** It is a Node.js script. It reads files you point at and
-  writes to `.crasp/` in your project.
+  writes to `.crasp/` in your project (plus the shared bundle at `~/.crasp/bin/`).
 - **Fails open.** If Crasp crashes, it exits cleanly and Claude Code continues — it
   never freezes your workflow.
-- **Auditable.** Open source. The five files that go to npm are the compiled CLI, the
-  README, and the license.
+- **Auditable.** Open source. Only the compiled CLI, the README, and the license ship
+  to npm (see `files` in `package.json`).
 
 ## Development
 

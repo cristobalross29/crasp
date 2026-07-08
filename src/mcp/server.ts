@@ -2,6 +2,7 @@ import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { CLI_VERSION } from "../version.js";
 import { loadConfig } from "../core/config/index.js";
 import { loadPolicy, policyExists } from "../core/policy/loader.js";
 import { mergeWithBuiltin } from "../core/patterns/index.js";
@@ -22,7 +23,7 @@ async function loadActivePolicy() {
 
 export async function startMcpServer(): Promise<void> {
   const policy = await loadActivePolicy();
-  const server = new McpServer({ name: "crasp", version: "0.1.0" });
+  const server = new McpServer({ name: "crasp", version: CLI_VERSION });
 
   server.tool(
     "crasp_check",

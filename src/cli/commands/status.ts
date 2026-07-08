@@ -1,8 +1,112 @@
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { loadConfig } from "../../core/config/index.js";
+import { craspBundlePath } from "../../core/install/index.js";
 import { getHookStatus } from "./hook.js";
-import type { ProjectStatus } from "../../types/index.js";
+import { readInstalledVersion } from "./setup.js";
+import type { InstallHealth, ProjectStatus } from "../../types/index.js";
+
+const REMEDIATION = "re-run: npx crasp setup";
+
+function extractAbsolutePaths(command: string): string[] {
+  const quoted = [
+    ...command.matchAll(/'([^']+)'/g),
+    ...command.matchAll(/"([^"]+)"/g),
+  ].map((m) => m[1]);
+  return quoted.filter((p) => path.isAbsolute(p));
+}
+
+export async function getInstallHealth(dir = process.cwd()): Promise<InstallHealth> {
+  const problems: string[] = [];
+
+  const bundle = craspBundlePath(os.homedir());
+  const bundleVersion = (await exists(bundle)) ? await readInstalledVersion(bundle) : null;
+  if (bundleVersion === null) {
+    problems.push(`installed bundle missing or unreadable at ${bundle} — ${REMEDIATION}`);
+  }
+
+  const settingsPath = path.join(dir, ".claude", "settings.json");
+  if (await exists(settingsPath)) {
+    try {
+      const raw = JSON.parse(await readFile(settingsPath, "utf8")) as {
+        hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
+      };
+      const commands = Object.values(raw.hooks ?? {})
+        .flat()
+        .flatMap((entry) => entry.hooks ?? [])
+        .map((h) => h.command)
+        .filter((c): c is string => typeof c === "string" && c.includes("crasp"));
+      for (const command of commands) {
+        const paths = extractAbsolutePaths(command);
+        if (paths.length === 0) {
+          problems.push(`legacy crasp hook without absolute paths ("${command.slice(0, 60)}") — ${REMEDIATION}`);
+          continue;
+        }
+        for (const p of paths) {
+          if (!(await exists(p))) {
+            problems.push(`hook references missing path ${p} — ${REMEDIATION}`);
+          }
+        }
+      }
+    } catch {
+      problems.push(`.claude/settings.json is unreadable — ${REMEDIATION}`);
+    }
+  }
+
+  const mcpPath = path.join(dir, ".mcp.json");
+  if (await exists(mcpPath)) {
+    try {
+      const raw = JSON.parse(await readFile(mcpPath, "utf8")) as {
+        mcpServers?: { crasp?: { command?: string; args?: string[] } };
+      };
+      const crasp = raw.mcpServers?.crasp;
+      if (crasp) {
+        const candidates = [crasp.command, crasp.args?.[0]].filter(
+          (x): x is string => typeof x === "string"
+        );
+        if (!candidates.some((p) => path.isAbsolute(p))) {
+          problems.push(`legacy .mcp.json crasp entry ("${crasp.command ?? ""}") — ${REMEDIATION}`);
+        }
+        for (const p of candidates.filter((x) => path.isAbsolute(x))) {
+          if (!(await exists(p))) {
+            problems.push(`.mcp.json references missing path ${p} — ${REMEDIATION}`);
+          }
+        }
+      }
+    } catch {
+      problems.push(`.mcp.json is unreadable — ${REMEDIATION}`);
+    }
+  }
+
+  const preCommitPath = path.join(dir, ".git", "hooks", "pre-commit");
+  if (await exists(preCommitPath)) {
+    try {
+      const raw = await readFile(preCommitPath, "utf8");
+      const lines = raw.split(/\r?\n/);
+      if (lines[1] === "# managed-by: crasp") {
+        let hasVar = false;
+        for (const varName of ["CRASP_NODE", "CRASP_BIN"]) {
+          const match = raw.match(new RegExp(`${varName}='([^']+)'`));
+          if (match) {
+            hasVar = true;
+            if (!(await exists(match[1]))) {
+              problems.push(`git pre-commit hook references missing path ${match[1]} — ${REMEDIATION}`);
+            }
+          }
+        }
+        if (!hasVar) {
+          problems.push(`git pre-commit hook uses a legacy format — ${REMEDIATION}`);
+        }
+      }
+    } catch {
+      problems.push(`git pre-commit hook is unreadable — ${REMEDIATION}`);
+    }
+  }
+
+  const deduped = [...new Set(problems)];
+  return { ok: deduped.length === 0, bundleVersion, problems: deduped };
+}
 
 export async function statusCommand(): Promise<void> {
   const status = await getProjectStatus();
@@ -22,7 +126,8 @@ export async function getProjectStatus(
     hookStatus: await getHookStatus(dir),
     policyPath,
     scenarioCount: await countScenarioFiles(path.join(dir, "scenarios")),
-    runCount: await countRunDirs(path.join(dir, ".crasp", "runs"))
+    runCount: await countRunDirs(path.join(dir, ".crasp", "runs")),
+    installHealth: await getInstallHealth(dir)
   };
 }
 

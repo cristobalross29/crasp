@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { CLI_VERSION } from "../version.js";
 import { checkCommand } from "./commands/check.js";
 import { hookCommand } from "./commands/hook.js";
 import { initCommand } from "./commands/init.js";
@@ -21,7 +22,7 @@ const program = new Command();
 program
   .name("crasp")
   .description("Local-first security layer for Claude Code — intercepts Write/Edit/Read/Bash (PreToolUse) and scans tool results (PostToolUse) to block leaked secrets, dangerous commands, prompt injection, and policy violations")
-  .version("0.2.0");
+  .version(CLI_VERSION);
 
 program
   .command("init")
