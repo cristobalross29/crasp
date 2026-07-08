@@ -110,7 +110,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   } catch (error) {
     console.error(chalk.red(
       `Could not install crasp to ~/.crasp/bin (${error instanceof Error ? error.message : String(error)}).\n` +
-      `Nothing was wired into Claude Code. Check permissions on ~/.crasp and re-run \`npx crasp setup\`.`
+      `Nothing was wired into Claude Code. Check permissions on ~/.crasp and re-run \`npx @cristobalross29/crasp setup\`.`
     ));
     process.exitCode = 1;
     return;
@@ -126,7 +126,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   if (installResult.action === "kept-newer") {
     console.log(chalk.yellow(
       `Installed copy at ${bundlePath} is NEWER (${installResult.previousVersion} > ${CLI_VERSION}) — keeping it.\n` +
-      `If you did not expect this, run \`npx crasp@latest setup --force\` to overwrite it.`
+      `If you did not expect this, run \`npx @cristobalross29/crasp@latest setup --force\` to overwrite it.`
     ));
   } else {
     console.log(chalk.dim(messages[installResult.action]));
@@ -227,7 +227,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
       console.error(chalk.red(
         `\nCrasp wiring verification failed: ${error instanceof Error ? error.message : String(error)}\n` +
         `Hook files were written but could not be confirmed working.\n` +
-        `Fix: re-run \`npx crasp@latest setup\`; if it persists, file an issue with the message above.` +
+        `Fix: re-run \`npx @cristobalross29/crasp@latest setup\`; if it persists, file an issue with the message above.` +
         (stderr ? `\nHook stderr: ${stderr}` : "")
       ));
       process.exitCode = 1;
@@ -376,7 +376,7 @@ function reportVerifyFailure(error: unknown, bundlePath: string): void {
     `Nothing was wired into Claude Code.\n` +
     `  Bundle: ${bundlePath}\n` +
     `  Node:   ${process.execPath}\n` +
-    `Fix: delete ${bundlePath} and re-run \`npx crasp@latest setup\`.`
+    `Fix: delete ${bundlePath} and re-run \`npx @cristobalross29/crasp@latest setup\`.`
   ));
   process.exitCode = 1;
 }
@@ -426,7 +426,7 @@ async function warnStaleGlobalCrasp(): Promise<void> {
     if (v && v !== CLI_VERSION) {
       console.log(chalk.yellow(
         `An older crasp (${v}) is still installed globally at ${p}.\n` +
-        `Remove it so stale commands don't fight this install: npm rm -g @cristobalross29/crasp crasp (or pnpm remove -g)`
+        `Remove it so stale commands don't fight this install: npm rm -g @cristobalross29/crasp (or pnpm remove -g)`
       ));
     }
   } catch {
@@ -603,7 +603,7 @@ const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
 Crasp protects this project via Claude Code PreToolUse/PostToolUse hooks: sensitive-file
 access, dangerous Bash commands, leaked secrets, and prompt injection in tool results.
 **Hooks are machine-local.** If \`.claude/settings.json\` has no crasp hooks (e.g. a fresh
-clone), protection is NOT active on this machine — run \`npx crasp setup\` once.
+clone), protection is NOT active on this machine — run \`npx @cristobalross29/crasp setup\` once.
 Policy rules live in \`crasp.policy.yml\`. Verify anytime with \`crasp status\`.
 ${CLAUDE_MD_SENTINEL_END}`;
 

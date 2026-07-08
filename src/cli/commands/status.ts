@@ -7,7 +7,7 @@ import { getHookStatus } from "./hook.js";
 import { readInstalledVersion } from "./setup.js";
 import type { InstallHealth, ProjectStatus } from "../../types/index.js";
 
-const REMEDIATION = "re-run: npx crasp setup";
+const REMEDIATION = "re-run: npx @cristobalross29/crasp setup";
 
 function extractAbsolutePaths(command: string): string[] {
   const quoted = [
