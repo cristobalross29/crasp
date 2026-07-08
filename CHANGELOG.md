@@ -35,6 +35,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   vanish; `crasp status` flags it.
 - The committed CLAUDE.md section now tells fresh-clone teammates to run
   `npx crasp setup` instead of claiming protection is active.
+- **Node.js 20+ is now required** (`engines: >=20`; commander 14 requires it and
+  Node 18 is end-of-life). All runtime dependencies are bundled into the single
+  CLI file and moved out of the published `dependencies`, so installing `crasp`
+  pulls zero transitive packages.
 
 ### Fixed
 - Hooks written by an npx-only install pointed at a `crasp` binary that did

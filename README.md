@@ -97,7 +97,8 @@ Always active. No configuration needed.
 | `secret-slack` | critical | Slack bot/user/app tokens (`xox…`) |
 | `secret-slack-webhook` | critical | Slack incoming webhook URLs |
 | `secret-sendgrid` | critical | SendGrid API keys (`SG.…`) |
-| `secret-twilio` | critical | Twilio SIDs/keys (`AC…`, `SK…` 32 hex) |
+| `secret-twilio` | critical | Twilio API key SIDs (`SK…` 32 hex) |
+| `secret-twilio-sid` | low | Twilio Account SIDs (`AC…` — semi-public, advisory only) |
 | `secret-huggingface` | critical | HuggingFace tokens (`hf_…`) |
 | `secret-npm` | critical | npm automation tokens (`npm_…`) |
 | `secret-pypi` | critical | PyPI API tokens (`pypi-…`) |
