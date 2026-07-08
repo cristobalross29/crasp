@@ -567,12 +567,11 @@ const CLAUDE_MD_SENTINEL_END = "<!-- crasp:end -->";
 const CLAUDE_MD_SECTION = `${CLAUDE_MD_SENTINEL_START}
 ## Crasp
 
-Real-time policy enforcement is active via PreToolUse hooks on Write, Edit, Read, and Bash.
-Sensitive files (.env*, private keys, certificates) are blocked or warned on access.
-Bash commands are screened for destructive actions and secret exfiltration before they run.
-Content written to files is also scanned for leaked secrets and policy violations.
-Content returned by Read, web fetches/searches, and Bash is scanned for injected instructions and leaked secrets before it re-enters context (a non-blocking caution; PostToolUse has no approval dialog).
-Policy rules live in \`crasp.policy.yml\`. Run \`crasp status\` to verify configuration.
+Crasp protects this project via Claude Code PreToolUse/PostToolUse hooks: sensitive-file
+access, dangerous Bash commands, leaked secrets, and prompt injection in tool results.
+**Hooks are machine-local.** If \`.claude/settings.json\` has no crasp hooks (e.g. a fresh
+clone), protection is NOT active on this machine — run \`npx crasp setup\` once.
+Policy rules live in \`crasp.policy.yml\`. Verify anytime with \`crasp status\`.
 ${CLAUDE_MD_SENTINEL_END}`;
 
 export async function ensureClaudeMdSection(

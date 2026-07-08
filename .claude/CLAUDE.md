@@ -75,6 +75,17 @@ src/
 
 ### Hook check pipeline (the main feature)
 
+Hooks invoke the shared bundle at `~/.crasp/bin/crasp.js` via the absolute node path
+recorded at setup time (fallback `command -v node` if that node is gone — see
+`canonicalHookCommand()` in `setup.ts`). `crasp setup` proves this end-to-end with a
+two-stage self-verification before it reports success: Stage 1 spawns the installed
+bundle directly (argv) and asserts it denies a synthetic secret, *before* any project
+file is wired — a broken pre-existing bundle is auto-repaired by reinstalling and
+retrying once. Stage 2 reads the exact Write hook command back out of
+`.claude/settings.json` as written to disk and runs it through `/bin/sh`, proving the
+file parses, the entry exists, and shell quoting survives — not just what setup intended
+to write. Either stage failing aborts setup with a non-zero exit and no success claim.
+
 ```
 Claude Code fires PreToolUse for Write/Edit/Read/Bash
   → crasp check --hook-input <tool>   (stdin: JSON payload)

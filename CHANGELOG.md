@@ -11,6 +11,38 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.1] - 2026-07-07
+
+### Added
+- Two-stage setup self-verification: the installed bundle AND the exact hook
+  command written to `.claude/settings.json` are both proven to block a
+  synthetic secret before setup reports success; broken pre-existing installs
+  are auto-repaired.
+- `crasp status` now reports `installHealth`: missing bundle, dead node/bundle
+  paths in hooks, `.mcp.json`, and the git pre-commit hook, plus legacy hook
+  formats — each with remediation.
+- `setup --force` reinstalls the shared bundle unconditionally.
+
+### Changed
+- **Package renamed to unscoped `crasp`** (was `@cristobalross29/crasp`).
+- The CLI is a fully self-contained single-file bundle; `crasp setup` installs
+  it to `~/.crasp/bin/crasp.js` (atomic, version-aware) and wires all hooks
+  with absolute node+bundle paths plus a `command -v node` fallback — a pure
+  `npx crasp setup` now yields verified protection with no global install.
+- Re-running setup migrates any older crasp hook format and warns when a stale
+  global crasp binary is still on PATH.
+- Pre-commit hook skips (fail-open, with a message) when its recorded paths
+  vanish; `crasp status` flags it.
+- The committed CLAUDE.md section now tells fresh-clone teammates to run
+  `npx crasp setup` instead of claiming protection is active.
+
+### Fixed
+- Hooks written by an npx-only install pointed at a `crasp` binary that did
+  not exist, silently disabling protection.
+- MCP server reported version 0.1.0 regardless of release.
+
+---
+
 ## [0.2.0] - 2026-06-24
 
 ### Added
@@ -197,7 +229,8 @@ Initial release.
 - **Run reports** — every scenario run stored under `.crasp/runs/` as terminal, JSON,
   or HTML output.
 
-[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cristobalross29/crasp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cristobalross29/crasp/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/cristobalross29/crasp/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/cristobalross29/crasp/compare/v0.1.2...v0.1.3
