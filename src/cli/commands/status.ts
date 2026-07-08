@@ -85,11 +85,18 @@ export async function getInstallHealth(dir = process.cwd()): Promise<InstallHeal
       const raw = await readFile(preCommitPath, "utf8");
       const lines = raw.split(/\r?\n/);
       if (lines[1] === "# managed-by: crasp") {
+        let hasVar = false;
         for (const varName of ["CRASP_NODE", "CRASP_BIN"]) {
           const match = raw.match(new RegExp(`${varName}='([^']+)'`));
-          if (match && !(await exists(match[1]))) {
-            problems.push(`git pre-commit hook references missing path ${match[1]} — ${REMEDIATION}`);
+          if (match) {
+            hasVar = true;
+            if (!(await exists(match[1]))) {
+              problems.push(`git pre-commit hook references missing path ${match[1]} — ${REMEDIATION}`);
+            }
           }
+        }
+        if (!hasVar) {
+          problems.push(`git pre-commit hook uses a legacy format — ${REMEDIATION}`);
         }
       }
     } catch {

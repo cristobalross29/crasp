@@ -426,7 +426,7 @@ async function warnStaleGlobalCrasp(): Promise<void> {
     if (v && v !== CLI_VERSION) {
       console.log(chalk.yellow(
         `An older crasp (${v}) is still installed globally at ${p}.\n` +
-        `Remove it so stale commands don't fight this install: npm rm -g @cristobalross29/crasp (or pnpm remove -g)`
+        `Remove it so stale commands don't fight this install: npm rm -g @cristobalross29/crasp crasp (or pnpm remove -g)`
       ));
     }
   } catch {
@@ -444,11 +444,16 @@ async function setupMcpIntegration(root: string, bundlePath: string): Promise<vo
     try {
       const raw = await readFile(mcpJsonPath, "utf8");
       mcpConfig = JSON.parse(raw) as { mcpServers: Record<string, unknown> };
-      mcpConfig.mcpServers ??= {};
     } catch {
       console.log(chalk.yellow(".mcp.json is not valid JSON — fix it and re-run setup (left untouched)"));
       return;
     }
+    const servers = mcpConfig.mcpServers;
+    if (servers !== undefined && (typeof servers !== "object" || servers === null || Array.isArray(servers))) {
+      console.log(chalk.yellow(".mcp.json has an unexpected shape — fix it and re-run setup (left untouched)"));
+      return;
+    }
+    mcpConfig.mcpServers ??= {};
   }
 
   const expected = { type: "stdio", command: process.execPath, args: [bundlePath, "mcp"] };
@@ -483,6 +488,13 @@ async function ensureClaudeCodeHooks(root: string, bundlePath: string): Promise<
   }
 
   const hooks = (settings.hooks as Record<string, unknown> | undefined) ?? {};
+  if (
+    (hooks.PreToolUse !== undefined && !Array.isArray(hooks.PreToolUse)) ||
+    (hooks.PostToolUse !== undefined && !Array.isArray(hooks.PostToolUse))
+  ) {
+    console.log(chalk.yellow(".claude/settings.json has an unexpected hooks shape — fix it and re-run setup (left untouched)"));
+    return;
+  }
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
   const postToolUse = (hooks.PostToolUse as unknown[] | undefined) ?? [];
 
@@ -491,51 +503,72 @@ async function ensureClaudeCodeHooks(root: string, bundlePath: string): Promise<
   const postCommand = (tool: InboundHookToolName): string =>
     canonicalHookCommand(bundlePath, `check --hook-input ${tool} --post`);
 
-  function entryCommand(h: unknown): string | undefined {
-    if (typeof h !== "object" || h === null) return undefined;
-    const inner = (h as { hooks?: Array<{ command?: string }> }).hooks;
-    return inner?.[0]?.command;
-  }
   const matcherOf = (h: unknown): unknown =>
     typeof h === "object" && h !== null ? (h as Record<string, unknown>).matcher : undefined;
-  // Broad stale detector: any crasp-shaped hook. The canonical command contains
-  // "crasp" (bundle path), so ALWAYS test canonical BEFORE classifying stale.
-  const isCraspShaped = (h: unknown): boolean => JSON.stringify(h).includes("crasp");
 
-  // PRE cleanup BEFORE the gate (mirrors the existing post-side MED 2(b) fix):
-  // drop stale crasp pre hooks and dedupe canonicals, so canonical+stale mixes
-  // can't survive via the early return.
-  const seenPre = new Set<HookToolName>();
-  const cleanedPre = preToolUse.filter((h) => {
-    const tool = HOOK_TOOLS.find((t) => matcherOf(h) === t);
-    if (tool === undefined) return true;               // different matcher → keep
-    if (entryCommand(h) === preCommand(tool)) {
-      if (seenPre.has(tool)) return false;             // duplicate canonical
-      seenPre.add(tool);
-      return true;
+  // Per-COMMAND normalization within each managed-matcher entry. For an entry
+  // on a managed matcher, filter its hooks[]: keep foreign commands (no "crasp"),
+  // keep the canonical command exactly once across the whole matcher, drop stale
+  // crasp commands. Canonical is tested BEFORE the stale check (canonical also
+  // contains "crasp" via the bundle path). Entries emptied by filtering are
+  // dropped; untouched entries keep object identity so the reference-equality
+  // no-op detection below still fires on an idempotent re-run.
+  function normalizeSide<T extends string>(
+    entries: unknown[],
+    tools: readonly T[],
+    commandFor: (tool: T) => string
+  ): unknown[] {
+    const seenCanonical = new Set<T>();
+    const result: unknown[] = [];
+    for (const entry of entries) {
+      const tool = tools.find((t) => matcherOf(entry) === t);
+      const inner =
+        typeof entry === "object" && entry !== null
+          ? (entry as { hooks?: unknown }).hooks
+          : undefined;
+      if (tool === undefined || !Array.isArray(inner)) {
+        result.push(entry); // foreign matcher or malformed entry → leave untouched
+        continue;
+      }
+      const canonical = commandFor(tool);
+      const keptHooks = inner.filter((h) => {
+        const cmd = (h as { command?: unknown } | null)?.command;
+        if (typeof cmd !== "string") return true; // non-command hook → keep
+        if (cmd === canonical) {
+          if (seenCanonical.has(tool)) return false; // dedupe canonical across matcher
+          seenCanonical.add(tool);
+          return true;
+        }
+        if (cmd.includes("crasp")) return false; // stale crasp → drop
+        return true; // foreign command → keep
+      });
+      if (keptHooks.length === 0) continue; // entry emptied → drop
+      if (keptHooks.length === inner.length && keptHooks.every((h, i) => h === inner[i])) {
+        result.push(entry); // unchanged → preserve identity
+      } else {
+        result.push({ ...(entry as object), hooks: keptHooks });
+      }
     }
-    return !isCraspShaped(h);                          // stale crasp → drop; foreign → keep
-  });
+    return result;
+  }
 
-  const seenPost = new Set<InboundHookToolName>();
-  const cleanedPost = postToolUse.filter((h) => {
-    const tool = INBOUND_HOOK_TOOLS.find((t) => matcherOf(h) === t);
-    if (tool === undefined) return true;
-    if (entryCommand(h) === postCommand(tool)) {
-      if (seenPost.has(tool)) return false;
-      seenPost.add(tool);
-      return true;
-    }
-    return !isCraspShaped(h);
-  });
+  const hasCommand = (entries: unknown[], tool: string, command: string): boolean =>
+    entries.some((entry) => {
+      if (matcherOf(entry) !== tool) return false;
+      const inner = (entry as { hooks?: Array<{ command?: unknown }> }).hooks;
+      return Array.isArray(inner) && inner.some((h) => h?.command === command);
+    });
+
+  const cleanedPre = normalizeSide(preToolUse, HOOK_TOOLS, preCommand);
+  const cleanedPost = normalizeSide(postToolUse, INBOUND_HOOK_TOOLS, postCommand);
 
   for (const tool of HOOK_TOOLS) {
-    if (!cleanedPre.some((h) => matcherOf(h) === tool && entryCommand(h) === preCommand(tool))) {
+    if (!hasCommand(cleanedPre, tool, preCommand(tool))) {
       cleanedPre.push({ matcher: tool, hooks: [{ type: "command", command: preCommand(tool) }] });
     }
   }
   for (const tool of INBOUND_HOOK_TOOLS) {
-    if (!cleanedPost.some((h) => matcherOf(h) === tool && entryCommand(h) === postCommand(tool))) {
+    if (!hasCommand(cleanedPost, tool, postCommand(tool))) {
       cleanedPost.push({ matcher: tool, hooks: [{ type: "command", command: postCommand(tool) }] });
     }
   }

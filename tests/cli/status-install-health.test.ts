@@ -104,6 +104,21 @@ describe("status installHealth", () => {
     } finally { await rm(ctx.root, { recursive: true, force: true }); }
   });
 
+  it("flags a legacy managed pre-commit hook without CRASP_NODE/CRASP_BIN", async () => {
+    const ctx = await makeCtx();
+    try {
+      run(["setup"], ctx.project, ctx.home);
+      const hookPath = path.join(ctx.project, ".git", "hooks", "pre-commit");
+      await writeFile(
+        hookPath,
+        "#!/usr/bin/env sh\n# managed-by: crasp\n\nexec crasp check --staged\n"
+      );
+      const health = healthOf(run(["status"], ctx.project, ctx.home).stdout);
+      expect(health.ok).toBe(false);
+      expect(health.problems.join(" ")).toContain("legacy format");
+    } finally { await rm(ctx.root, { recursive: true, force: true }); }
+  });
+
   it("reports an unreadable pre-commit hook instead of crashing", async () => {
     const ctx = await makeCtx();
     try {

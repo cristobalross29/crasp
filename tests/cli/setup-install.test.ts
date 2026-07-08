@@ -185,6 +185,100 @@ describe("setup installs bundle and wires self-healing absolute-path hooks", () 
     } finally { await cleanup(ctx); }
   });
 
+  it("normalizes a mixed entry per command — foreign survives, stale crasp dropped", async () => {
+    const ctx = await makeCtx();
+    try {
+      const claudeDir = path.join(ctx.project, ".claude");
+      await mkdir(claudeDir, { recursive: true });
+      await writeFile(
+        path.join(claudeDir, "settings.json"),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [
+                  { type: "command", command: "eslint --fix" },
+                  { type: "command", command: "crasp check --hook-input Write" },
+                ],
+              },
+            ],
+          },
+        })
+      );
+      runSetup(ctx);
+      const settings = JSON.parse(
+        await readFile(path.join(claudeDir, "settings.json"), "utf8")
+      ) as { hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> } };
+      const commands = settings.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command));
+      expect(commands).toContain("eslint --fix");
+      expect(commands.some((c) => c === "crasp check --hook-input Write")).toBe(false);
+      expect(
+        commands.filter((c) => c === expectedCommand(ctx.bundle, "check --hook-input Write"))
+      ).toHaveLength(1);
+    } finally { await cleanup(ctx); }
+  });
+
+  it("dedupes a canonical+stale hand-merged into one entry — canonical kept once", async () => {
+    const ctx = await makeCtx();
+    try {
+      const claudeDir = path.join(ctx.project, ".claude");
+      await mkdir(claudeDir, { recursive: true });
+      await writeFile(
+        path.join(claudeDir, "settings.json"),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [
+                  { type: "command", command: expectedCommand(ctx.bundle, "check --hook-input Write") },
+                  { type: "command", command: "crasp check --hook-input Write" },
+                ],
+              },
+            ],
+          },
+        })
+      );
+      runSetup(ctx);
+      const settings = JSON.parse(
+        await readFile(path.join(claudeDir, "settings.json"), "utf8")
+      ) as { hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> } };
+      const writeCommands = settings.hooks.PreToolUse
+        .filter((h) => h.matcher === "Write")
+        .flatMap((h) => h.hooks.map((x) => x.command))
+        .filter((c) => c.includes("crasp"));
+      expect(writeCommands).toHaveLength(1);
+      expect(writeCommands[0]).toBe(expectedCommand(ctx.bundle, "check --hook-input Write"));
+      expect(writeCommands.some((c) => c === "crasp check --hook-input Write")).toBe(false);
+    } finally { await cleanup(ctx); }
+  });
+
+  it("leaves an array-shaped .mcp.json untouched and warns", async () => {
+    const ctx = await makeCtx();
+    try {
+      const planted = JSON.stringify({ mcpServers: [] });
+      await writeFile(path.join(ctx.project, ".mcp.json"), planted);
+      const result = runSetup(ctx);
+      expect(await readFile(path.join(ctx.project, ".mcp.json"), "utf8")).toBe(planted);
+      expect(result.stdout + result.stderr).toContain("unexpected shape");
+    } finally { await cleanup(ctx); }
+  });
+
+  it("leaves a non-array PreToolUse untouched, skips wiring, and fails verification", async () => {
+    const ctx = await makeCtx();
+    try {
+      const claudeDir = path.join(ctx.project, ".claude");
+      await mkdir(claudeDir, { recursive: true });
+      const planted = JSON.stringify({ hooks: { PreToolUse: {} } });
+      await writeFile(path.join(claudeDir, "settings.json"), planted);
+      const result = runSetup(ctx);
+      expect(await readFile(path.join(claudeDir, "settings.json"), "utf8")).toBe(planted);
+      expect(result.status).toBe(1);
+      expect(result.stdout).not.toContain("protection verified");
+    } finally { await cleanup(ctx); }
+  });
+
   it("never clobbers a malformed settings.json or .mcp.json", async () => {
     const ctx = await makeCtx();
     try {

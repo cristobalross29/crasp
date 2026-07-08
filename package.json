@@ -12,7 +12,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "keywords": [
     "ai-safety",
@@ -32,23 +32,21 @@
     "release:check": "pnpm prepublishOnly && npm pack --dry-run",
     "prepublishOnly": "pnpm build && pnpm test && pnpm typecheck"
   },
-  "dependencies": {
+  "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/micromatch": "^4.0.9",
+    "@types/node": "^20.19.41",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.2",
     "js-yaml": "^4.1.1",
     "micromatch": "^4.0.8",
     "nanoid": "^5.1.6",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/micromatch": "^4.0.9",
-    "@types/node": "^20.19.41",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   },
   "repository": {
     "type": "git",

@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/crasp)](https://www.npmjs.com/package/crasp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![node >=18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+[![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
 
 > Previously published as @cristobalross29/crasp — that package is deprecated; crasp is
 > the same project.
@@ -253,7 +253,9 @@ npm install --save-dev crasp
 npm install -g crasp
 ```
 
-Requires Node.js 18 or newer. No other dependencies.
+Requires Node.js 20 or newer. Crasp bundles all of its dependencies into a single
+self-contained file, so `npx crasp` and every install path pull zero transitive
+dependencies at install time.
 
 ## Removing crasp
 
