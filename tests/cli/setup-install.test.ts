@@ -221,6 +221,68 @@ describe("setup installs bundle and wires self-healing absolute-path hooks", () 
   });
 });
 
+describe("setup self-verification", () => {
+  it("reports both verification stages on success", async () => {
+    const ctx = await makeCtx();
+    try {
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Verified: installed bundle blocks a test secret");
+      expect(result.stdout).toContain("Verified: the exact hook command written to .claude/settings.json works");
+      expect(result.stdout).toContain("Restart any open Claude Code session");
+    } finally { await cleanup(ctx); }
+  });
+
+  it("auto-repairs a corrupt pre-existing bundle and still succeeds", async () => {
+    const ctx = await makeCtx();
+    try {
+      // Corrupt "newer" bundle: answers --version 99.0.0 (so install keeps it)
+      // but crashes on check. Stage 1 must detect this, force-recopy the real
+      // bundle, and proceed.
+      await mkdir(path.dirname(ctx.bundle), { recursive: true });
+      await writeFile(
+        ctx.bundle,
+        'if (process.argv.includes("--version")) { console.log("99.0.0"); process.exit(0); }\n' +
+        "process.exit(7);\n"
+      );
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("repaired");
+      const v = spawnSync(process.execPath, [ctx.bundle, "--version"], { encoding: "utf8" });
+      expect(v.stdout.trim()).toBe(CLI_VERSION);
+    } finally { await cleanup(ctx); }
+  });
+
+  it("exits 1 without wiring anything when the bundle cannot be made to work", async () => {
+    const ctx = await makeCtx();
+    try {
+      // Make ~/.crasp/bin/crasp.js an unwritable DIRECTORY: install and
+      // force-repair both fail, so stage 1 cannot ever pass.
+      await mkdir(path.join(ctx.bundle, "block"), { recursive: true });
+      const result = runSetup(ctx);
+      expect(result.status).toBe(1);
+      await expect(
+        access(path.join(ctx.project, ".claude", "settings.json"))
+      ).rejects.toThrow();
+      expect(result.stdout + result.stderr).toMatch(/Could not install|verification failed/);
+    } finally { await cleanup(ctx); }
+  });
+
+  it("fails wiring verification (no banner, no exit-0) when settings.json is malformed so wiring is skipped", async () => {
+    const ctx = await makeCtx();
+    try {
+      const claudeDir = path.join(ctx.project, ".claude");
+      await mkdir(claudeDir, { recursive: true });
+      const malformed = "{ not json !";
+      await writeFile(path.join(claudeDir, "settings.json"), malformed);
+      const result = runSetup(ctx);
+      expect(result.status).toBe(1);
+      expect(result.stdout).not.toContain("protection verified");
+      expect(await readFile(path.join(claudeDir, "settings.json"), "utf8")).toBe(malformed);
+    } finally { await cleanup(ctx); }
+  });
+});
+
 describe("setup git pre-commit hook", () => {
   it("skips when the project has no .git directory", async () => {
     const ctx = await makeCtx();

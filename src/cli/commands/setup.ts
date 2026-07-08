@@ -1,6 +1,7 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 import path from "node:path";
 import chalk from "chalk";
 import {
@@ -133,6 +134,37 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 
   await warnStaleGlobalCrasp();
 
+  // Stage 1 verification — BEFORE any project file is written. Proves the
+  // installed bundle actually blocks a synthetic secret via direct argv spawn.
+  // If a pre-existing bundle is broken, force-recopy the running bundle and
+  // retry once; if it still fails, abort with the project untouched.
+  if (!options.skipVerify) {
+    try {
+      await verifyBundle(bundlePath);
+    } catch (firstError) {
+      const preExisting = installResult.action === "kept-newer" || installResult.action === "unchanged";
+      const ownSource = options.bundleSourcePath ?? fileURLToPath(import.meta.url);
+      if (preExisting && path.resolve(ownSource) !== path.resolve(bundlePath)) {
+        try {
+          ({ bundlePath, result: installResult } = await resolveInstalledBundle({
+            bundleSourcePath: options.bundleSourcePath,
+            craspHome: options.craspHome,
+            force: true,
+          }));
+          await verifyBundle(bundlePath);
+          console.log(chalk.yellow(`Existing install was broken — repaired by reinstalling crasp ${CLI_VERSION}.`));
+        } catch {
+          reportVerifyFailure(firstError, bundlePath);
+          return;
+        }
+      } else {
+        reportVerifyFailure(firstError, bundlePath);
+        return;
+      }
+    }
+    console.log(chalk.dim("Verified: installed bundle blocks a test secret."));
+  }
+
   // Config
   await mkdir(craspDir, { recursive: true });
   if (options.force || !(await exists(configPath))) {
@@ -182,7 +214,27 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
   // CLAUDE.md documentation block
   await ensureClaudeMdSection(root, options.force);
 
-  console.log(chalk.green("\nCrasp setup complete. Open Claude Code — protection is already active."));
+  // Stage 2 verification — AFTER all wiring. Reads the Write hook command
+  // back from .claude/settings.json as written on disk and runs it through a
+  // real shell, proving the file parses, the entry exists, and the quoting
+  // survives a real shell — not just what we intended to write.
+  if (!options.skipVerify) {
+    try {
+      await verifyWiredHook(root);
+      console.log(chalk.dim("Verified: the exact hook command written to .claude/settings.json works."));
+    } catch (error) {
+      console.error(chalk.red(
+        `\nCrasp wiring verification failed: ${error instanceof Error ? error.message : String(error)}\n` +
+        `Hook files were written but could not be confirmed working.\n` +
+        `Fix: re-run \`npx crasp@latest setup\`; if it persists, file an issue with the message above.`
+      ));
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  console.log(chalk.green("\nCrasp setup complete — protection verified."));
+  console.log(chalk.yellow("Restart any open Claude Code session in this project (hooks load at startup), and approve the crasp MCP server when prompted."));
   console.log(
     chalk.dim(
       "\nWhat's now running (automatically, no extra commands needed):\n" +
@@ -244,6 +296,85 @@ export function canonicalHookCommand(bundlePath: string, args: string): string {
   // recorded node was uninstalled (nvm etc). Without it, a deleted node
   // version silently kills protection in every wired project.
   return `N=${shq(process.execPath)}; [ -x "$N" ] || N="$(command -v node || true)"; exec "$N" ${shq(bundlePath)} ${args}`;
+}
+
+function denyPayload(): string {
+  // Concatenated so no secret-shaped literal exists in source.
+  const fakeKey = "AKIA" + "ABCDEFGHIJKLMNOP";
+  return JSON.stringify({
+    tool_input: { file_path: "crasp-verify.ts", content: `const k = "${fakeKey}";` },
+  });
+}
+
+function assertDeny(stdout: string, label: string): void {
+  let decision: string | undefined;
+  try {
+    const parsed = JSON.parse(stdout.trim()) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    decision = parsed.hookSpecificOutput?.permissionDecision;
+  } catch {
+    throw new Error(`${label}: unparseable output: ${stdout.slice(0, 200)}`);
+  }
+  if (decision !== "deny") {
+    throw new Error(`${label}: expected deny for a synthetic secret, got: ${decision ?? "no decision"}`);
+  }
+}
+
+// Stage 1: direct argv spawn of the installed bundle, BEFORE any wiring.
+// Proves the bundle we're about to point hooks at actually works at all.
+export async function verifyBundle(bundlePath: string): Promise<void> {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-verify-"));
+  try {
+    const stdout = execFileSync(
+      process.execPath,
+      [bundlePath, "check", "--hook-input", "Write"],
+      { input: denyPayload(), encoding: "utf8", cwd: tmp, timeout: 15_000 }
+    );
+    assertDeny(stdout, "bundle check");
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+// Stage 2: read the Write hook command back from .claude/settings.json AS
+// WRITTEN ON DISK and execute it through a real shell — proving the file
+// parses, the entry exists, and the quoting survives a real shell.
+export async function verifyWiredHook(projectRoot: string): Promise<void> {
+  const settingsPath = path.join(projectRoot, ".claude", "settings.json");
+  const settings = JSON.parse(await readFile(settingsPath, "utf8")) as {
+    hooks?: { PreToolUse?: Array<{ matcher?: string; hooks?: Array<{ command?: string }> }> };
+  };
+  const command = settings.hooks?.PreToolUse
+    ?.find((h) => h.matcher === "Write")
+    ?.hooks?.[0]?.command;
+  if (!command || !command.includes("crasp")) {
+    throw new Error("no crasp Write hook found in .claude/settings.json after wiring");
+  }
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "crasp-verify-"));
+  try {
+    const stdout = execSync(command, {
+      input: denyPayload(),
+      encoding: "utf8",
+      cwd: tmp,
+      timeout: 15_000,
+      shell: "/bin/sh",
+    });
+    assertDeny(stdout, "wired hook");
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+function reportVerifyFailure(error: unknown, bundlePath: string): void {
+  console.error(chalk.red(
+    `\nCrasp setup verification failed: ${error instanceof Error ? error.message : String(error)}\n` +
+    `Nothing was wired into Claude Code.\n` +
+    `  Bundle: ${bundlePath}\n` +
+    `  Node:   ${process.execPath}\n` +
+    `Fix: delete ${bundlePath} and re-run \`npx crasp@latest setup\`.`
+  ));
+  process.exitCode = 1;
 }
 
 export async function readInstalledVersion(p: string): Promise<string | null> {
