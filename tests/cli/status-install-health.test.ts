@@ -151,6 +151,28 @@ describe("status installHealth", () => {
     } finally { await rm(ctx.root, { recursive: true, force: true }); }
   });
 
+  it("does not register a random uninitialized folder even when the bundle is healthy", async () => {
+    // Real-world bug: running `crasp status` in any folder registered it in
+    // the panel, because a folder with no crasp files has zero health
+    // problems. Registration must also require initialized (config present).
+    const ctx = await makeCtx();
+    try {
+      expect(run(["setup"], ctx.project, ctx.home).status).toBe(0);
+      const random = path.join(ctx.root, "random-folder");
+      await mkdir(random, { recursive: true });
+      const result = run(["status"], random, ctx.home);
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout) as { initialized: boolean; installHealth: { ok: boolean } };
+      expect(parsed.initialized).toBe(false);
+      expect(parsed.installHealth.ok).toBe(true);
+      const entries = JSON.parse(
+        await readFile(path.join(ctx.home, ".crasp", "projects.json"), "utf8")
+      ) as Array<{ path: string }>;
+      const { realpath } = await import("node:fs/promises");
+      expect(entries.map((e) => e.path)).not.toContain(await realpath(random));
+    } finally { await rm(ctx.root, { recursive: true, force: true }); }
+  });
+
   it("reports an unreadable pre-commit hook instead of crashing", async () => {
     const ctx = await makeCtx();
     try {

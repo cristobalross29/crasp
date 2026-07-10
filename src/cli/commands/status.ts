@@ -112,7 +112,9 @@ export async function getInstallHealth(dir = process.cwd()): Promise<InstallHeal
 export async function statusCommand(): Promise<void> {
   const status = await getProjectStatus();
 
-  if (status.installHealth.ok) {
+  // installHealth.ok alone is not enough: a folder with no crasp files has
+  // zero problems, so a bare `crasp status` anywhere would register it.
+  if (status.initialized && status.installHealth.ok) {
     await registerProject(process.cwd());
   }
 
