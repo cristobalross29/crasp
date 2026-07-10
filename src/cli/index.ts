@@ -16,6 +16,7 @@ import { validateCommand } from "./commands/validate.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { hookLogCommand } from "./commands/hook-log.js";
 import { watchCommand } from "./commands/watch.js";
+import { panelCommand } from "./commands/panel.js";
 
 const program = new Command();
 
@@ -111,5 +112,12 @@ program
   .option("--since <spec>", "only show activity since <spec> (e.g. 30m, 2h, 1d, or an ISO timestamp)")
   .option("--interval <ms>", "poll interval in ms for the live view (default 250)")
   .action(watchCommand);
+
+program
+  .command("panel")
+  .description("open the live crasp activity dashboard for all registered projects")
+  .option("--port <port>", "port to listen on (default 4269)")
+  .option("--no-open", "do not open the browser automatically")
+  .action(panelCommand);
 
 program.parse();
