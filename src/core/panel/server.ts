@@ -44,21 +44,24 @@ async function buildBootstrap(
   const since = new Date();
   since.setDate(since.getDate() - days);
 
-  const projects: PanelProjectInfo[] = [];
   const all: TaggedEvent[] = [];
-  for (const dir of dirs) {
-    const name = path.basename(dir);
-    const entries = await readHookLog(dir, { since });
-    for (const entry of entries) all.push({ ...entry, project: name });
-    const health = await getProjectHealth(dir);
-    projects.push({
-      path: dir,
-      name,
-      healthy: health.ok,
-      problems: health.problems,
-      lastEventTs: entries.length > 0 ? entries[entries.length - 1].ts : null,
-    });
-  }
+  const projects: PanelProjectInfo[] = await Promise.all(
+    dirs.map(async (dir) => {
+      const name = path.basename(dir);
+      const [entries, health] = await Promise.all([
+        readHookLog(dir, { since }),
+        getProjectHealth(dir),
+      ]);
+      for (const entry of entries) all.push({ ...entry, project: name });
+      return {
+        path: dir,
+        name,
+        healthy: health.ok,
+        problems: health.problems,
+        lastEventTs: entries.length > 0 ? entries[entries.length - 1].ts : null,
+      };
+    })
+  );
 
   all.sort((a, b) => b.ts.localeCompare(a.ts)); // newest first
   return {
@@ -92,43 +95,53 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
   heartbeat.unref?.();
 
   const server = createServer((req, res) => {
-    const url = (req.url ?? "/").split("?")[0];
+    try {
+      const url = (req.url ?? "/").split("?")[0];
 
-    if (url === "/") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(PANEL_PAGE);
-      return;
-    }
+      if (url === "/") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(PANEL_PAGE);
+        return;
+      }
 
-    if (url === "/api/bootstrap") {
-      const daysParam = new URL(req.url ?? "/", "http://localhost").searchParams.get("days");
-      const days = daysParam === "90" ? 90 : 30; // anything else falls back to 30
-      void buildBootstrap(dirs, opts.getProjectHealth, days)
-        .then((bootstrap) => {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify(bootstrap));
-        })
-        .catch((error: unknown) => {
-          res.writeHead(500, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      if (url === "/api/bootstrap") {
+        const daysParam = new URL(req.url ?? "/", "http://localhost").searchParams.get("days");
+        const days = daysParam === "90" ? 90 : 30; // anything else falls back to 30
+        void buildBootstrap(dirs, opts.getProjectHealth, days)
+          .then((bootstrap) => {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify(bootstrap));
+          })
+          .catch((error: unknown) => {
+            res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+          });
+        return;
+      }
+
+      if (url === "/api/stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
         });
-      return;
-    }
+        res.write(": connected\n\n");
+        clients.add(res);
+        req.on("close", () => clients.delete(res));
+        res.on("error", () => clients.delete(res));
+        return;
+      }
 
-    if (url === "/api/stream") {
-      res.writeHead(200, {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-      });
-      res.write(": connected\n\n");
-      clients.add(res);
-      req.on("close", () => clients.delete(res));
-      return;
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    } catch (error: unknown) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      } else {
+        res.destroy();
+      }
     }
-
-    res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "not found" }));
   });
 
   await new Promise<void>((resolve, reject) => {
