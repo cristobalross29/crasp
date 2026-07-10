@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, rename, rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { BundleInstallAction, BundleInstallResult } from "../../types/index.js";
@@ -36,6 +36,13 @@ export async function installBundle(opts: {
   if (path.resolve(sourcePath) === path.resolve(destPath)) {
     return { action: "unchanged", previousVersion: null };
   }
+
+  // Pin ESM resolution for the bundle: without this marker, a stray ancestor
+  // package.json (e.g. ~/package.json with no "type") makes Node load the
+  // bundle as CJS and every wired hook dies with a SyntaxError. Written
+  // before the version probe so broken pre-existing installs self-heal.
+  await mkdir(path.dirname(destPath), { recursive: true });
+  await writeFile(path.join(path.dirname(destPath), "package.json"), '{"type":"module"}\n');
 
   const previousVersion = force
     ? await readInstalledVersion(destPath).catch(() => null)

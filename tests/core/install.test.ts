@@ -50,7 +50,7 @@ describe("installBundle", () => {
       expect(result).toEqual({ action: "installed", previousVersion: null });
       expect(await readFile(destPath, "utf8")).toBe("SOURCE-CONTENT");
       const siblings = await readdir(path.dirname(destPath));
-      expect(siblings).toEqual(["crasp.js"]);
+      expect(siblings).toEqual(["crasp.js", "package.json"]); // ESM marker + bundle, no .tmp-* strays
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -123,7 +123,7 @@ describe("installBundle", () => {
         })
       ).rejects.toThrow();
       const siblings = await readdir(path.dirname(destPath));
-      expect(siblings).toEqual(["crasp.js"]); // only the blocking dir itself, no .tmp-* strays
+      expect(siblings).toEqual(["crasp.js", "package.json"]); // blocking dir + ESM marker, no .tmp-* strays
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

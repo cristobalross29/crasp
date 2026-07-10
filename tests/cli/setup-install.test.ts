@@ -47,6 +47,25 @@ describe("setup installs bundle and wires self-healing absolute-path hooks", () 
     } finally { await cleanup(ctx); }
   });
 
+  it("bundle runs even when a typeless package.json exists above ~/.crasp", async () => {
+    // Real-world failure: ~/package.json without "type" makes Node load the
+    // ESM bundle as CJS ("Cannot use import statement outside a module").
+    // Node 22+ syntax detection hides this whenever no ancestor package.json
+    // exists, which is why plain temp-home tests never caught it.
+    const ctx = await makeCtx();
+    try {
+      await writeFile(path.join(ctx.home, "package.json"), '{"name":"home","version":"1.0.0"}\n');
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      const marker = JSON.parse(
+        await readFile(path.join(path.dirname(ctx.bundle), "package.json"), "utf8")
+      ) as { type?: string };
+      expect(marker.type).toBe("module");
+      const v = spawnSync(process.execPath, [ctx.bundle, "--version"], { encoding: "utf8" });
+      expect(v.stdout.trim()).toBe(CLI_VERSION);
+    } finally { await cleanup(ctx); }
+  });
+
   it("registers the project in ~/.crasp/projects.json", async () => {
     const ctx = await makeCtx();
     try {
