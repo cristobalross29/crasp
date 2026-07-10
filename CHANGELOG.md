@@ -7,11 +7,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.2.2] - 2026-07-10
+
+### Added
+- **`crasp panel` — live web dashboard.** One command opens a local page
+  (`127.0.0.1:4269`) showing Crasp activity across every protected project on
+  the machine: per-project protection health (hooks wired, bundle healthy),
+  a live event feed (SSE, ~1s latency) of every Write/Edit/Read/Bash check
+  with redacted targets and the rule that fired, today's
+  clean/advisory/asked/denied totals, a 30-day activity chart, and top-rule /
+  per-project breakdowns. A `30d · 90d · live` toggle picks how much history
+  to load — events are logged whether or not the panel is open, so nothing is
+  ever missed. Read-only and private: localhost-only bind, foreign `Host`
+  headers rejected (DNS-rebinding defense), self-contained page with zero
+  external requests. `--port` and `--no-open` flags.
+- **Project registry.** `crasp setup` (and any healthy `crasp status`)
+  records the project in `~/.crasp/projects.json`; the panel aggregates all
+  registered projects from anywhere.
 
 ### Removed
-- `crasp watch` (the terminal dashboard) — replaced by `crasp panel`, a live
-  web dashboard of hook activity across all your protected projects.
+- `crasp watch` (the terminal dashboard) — replaced by `crasp panel`.
+
+### Fixed
+- Install: the shared bundle at `~/.crasp/bin/` is now pinned as ESM with its
+  own `package.json` marker. Previously a stray `~/package.json` without
+  `"type": "module"` made Node load the bundle as CommonJS, breaking setup
+  and every wired hook on that machine.
+- `crasp status` no longer registers a random, uninitialized folder in the
+  panel registry just because the machine-wide install is healthy.
 
 ---
 

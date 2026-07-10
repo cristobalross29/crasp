@@ -175,9 +175,30 @@ crasp policy list               # show all active rules (built-in + yours)
 
 ## Live dashboard (`crasp panel`)
 
-Run `crasp panel` to open a live web dashboard of hook activity across all your
-protected projects. It starts a local server, prints the URL, and opens your
-browser automatically.
+Run `crasp panel` from any folder to open a live web dashboard of Crasp activity
+across **all** your protected projects — the answer to "is Crasp actually on, and
+what is it doing?" at a glance:
+
+- **Protection status** — every project you've run `crasp setup` in, each with a
+  green/red health indicator (hooks wired, bundle healthy) and its last event time.
+- **Live feed** — every Write/Edit/Read/Bash check streams in within ~1 second as
+  Claude Code works: time, project, tool, redacted target, outcome, and the rule
+  that fired.
+- **Today's totals** — clean / advisory / asked / denied counters.
+- **Trends & breakdowns** — a 30-day activity chart, top rules firing, and
+  per-project counts.
+- **History toggle** — `30d · 90d · live`. Events are logged to each project's
+  `.crasp/events.ndjson` whether or not the panel is open, so opening it always
+  loads history instantly; `live` shows only what happens from that moment on.
+
+Projects register themselves automatically: every `crasp setup` (and every healthy
+`crasp status`) records the project in `~/.crasp/projects.json`, which the panel
+reads.
+
+The panel is read-only and private by design: it binds to `127.0.0.1` only,
+rejects requests with a foreign `Host` header (DNS-rebinding defense), displays
+only the already-redacted event log, and the page is fully self-contained — no
+CDN, no fonts, no requests leaving your machine.
 
 - `--port <port>` sets the port to listen on (default `4269`).
 - `--no-open` starts the server without launching a browser tab.
