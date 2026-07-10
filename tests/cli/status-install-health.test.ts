@@ -132,6 +132,25 @@ describe("status installHealth", () => {
     } finally { await rm(ctx.root, { recursive: true, force: true }); }
   });
 
+  it("does not register an unhealthy project in ~/.crasp/projects.json", async () => {
+    const ctx = await makeCtx();
+    try {
+      const result = run(["status"], ctx.project, ctx.home);
+      expect(result.status).toBe(0);
+      const health = healthOf(result.stdout);
+      expect(health.ok).toBe(false);
+
+      const registryPath = path.join(ctx.home, ".crasp", "projects.json");
+      try {
+        const entries = JSON.parse(await readFile(registryPath, "utf8")) as Array<{ path: string }>;
+        const { realpath } = await import("node:fs/promises");
+        expect(entries.map((e) => e.path)).not.toContain(await realpath(ctx.project));
+      } catch (error) {
+        expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+      }
+    } finally { await rm(ctx.root, { recursive: true, force: true }); }
+  });
+
   it("reports an unreadable pre-commit hook instead of crashing", async () => {
     const ctx = await makeCtx();
     try {
