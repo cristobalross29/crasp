@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { PanelBootstrap } from "../../src/types/index.js";
@@ -132,5 +133,29 @@ describe("crasp panel", () => {
     expect(b90.aggregates.daily).toHaveLength(90);
     const bOther = (await (await fetch(url + "/api/bootstrap?days=7")).json()) as PanelBootstrap;
     expect(bOther.aggregates.daily).toHaveLength(30);
+  });
+
+  it("rejects a spoofed Host header (DNS-rebinding defense)", async () => {
+    // node's global fetch (undici) treats "host" as a forbidden header and
+    // silently drops it, so use node:http directly to guarantee the spoofed
+    // Host actually goes out on the wire.
+    const { hostname, port } = new URL(url);
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          hostname,
+          port,
+          path: "/api/bootstrap",
+          headers: { host: "evil.example.com" },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode));
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    expect(status).toBe(403);
   });
 });

@@ -11,6 +11,14 @@ import type { PanelBootstrap, PanelProjectInfo, TaggedEvent } from "../../types/
 const EVENTS_CAP = 5000;
 const HEARTBEAT_MS = 15_000;
 
+// DNS-rebinding defense: only accept requests whose Host header names this
+// loopback server, regardless of what address it's actually bound on.
+const ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
+function isAllowedHost(host: string | undefined): boolean {
+  return typeof host === "string" && ALLOWED_HOST_RE.test(host);
+}
+
 export interface PanelServerOptions {
   port: number;
   craspDir?: string;
@@ -96,6 +104,12 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
 
   const server = createServer((req, res) => {
     try {
+      if (!isAllowedHost(req.headers.host)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden host" }));
+        return;
+      }
+
       const url = (req.url ?? "/").split("?")[0];
 
       if (url === "/") {
@@ -112,10 +126,10 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
             res.writeHead(200, { "content-type": "application/json" });
             res.end(JSON.stringify(bootstrap));
           })
-          .catch((error: unknown) => {
+          .catch(() => {
             if (!res.headersSent) {
               res.writeHead(500, { "content-type": "application/json" });
-              res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+              res.end(JSON.stringify({ error: "bootstrap failed" }));
             } else {
               res.destroy();
             }
@@ -138,10 +152,10 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
 
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
-    } catch (error: unknown) {
+    } catch {
       if (!res.headersSent) {
         res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        res.end(JSON.stringify({ error: "bootstrap failed" }));
       } else {
         res.destroy();
       }

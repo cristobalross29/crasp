@@ -318,6 +318,8 @@ td.rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size
       feed.textContent = '';
       el('feed-empty').hidden = b.events.length > 0;
       b.events.slice(0, 50).forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
+    }).catch(function () {
+      el('live-dot').classList.remove('live');
     });
   }
   el('range').addEventListener('click', function (e) {
