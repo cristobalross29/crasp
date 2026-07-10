@@ -184,3 +184,40 @@ export interface RegistryEntry {
   path: string;
   registeredAt: string;
 }
+
+export interface TaggedEvent extends HookLogEntry {
+  /** Project display name (basename of the project root). */
+  project: string;
+}
+
+export interface PanelDailyCount {
+  /** YYYY-MM-DD local date. */
+  date: string;
+  clean: number;
+  advisory: number;
+  ask: number;
+  denied: number;
+}
+
+export interface PanelAggregates {
+  today: { clean: number; advisory: number; ask: number; denied: number };
+  /** One entry per day of the requested window, oldest first, ending with today. Zero-filled. */
+  daily: PanelDailyCount[];
+  topRules: Array<{ ruleId: string; count: number }>;
+  byProject: Array<{ project: string; count: number }>;
+}
+
+export interface PanelProjectInfo {
+  path: string;
+  name: string;
+  healthy: boolean;
+  problems: string[];
+  lastEventTs: string | null;
+}
+
+export interface PanelBootstrap {
+  projects: PanelProjectInfo[];
+  /** Newest first, last 30 days, capped at 5000. */
+  events: TaggedEvent[];
+  aggregates: PanelAggregates;
+}
