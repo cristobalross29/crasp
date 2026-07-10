@@ -178,3 +178,9 @@ export interface BundleInstallResult {
   action: BundleInstallAction;
   previousVersion: string | null;
 }
+
+export interface RegistryEntry {
+  /** Absolute path to a project root wired by `crasp setup`. */
+  path: string;
+  registeredAt: string;
+}
