@@ -113,8 +113,12 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
             res.end(JSON.stringify(bootstrap));
           })
           .catch((error: unknown) => {
-            res.writeHead(500, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+            if (!res.headersSent) {
+              res.writeHead(500, { "content-type": "application/json" });
+              res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+            } else {
+              res.destroy();
+            }
           });
         return;
       }
