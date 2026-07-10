@@ -10,6 +10,7 @@ import {
   writeConfig
 } from "../../core/config/index.js";
 import { craspBundlePath, installBundle, shq } from "../../core/install/index.js";
+import { registerProject } from "../../core/registry/index.js";
 import { CLI_VERSION } from "../../version.js";
 import { installHook } from "./hook.js";
 import type { BundleInstallResult, CraspConfig } from "../../types/index.js";
@@ -234,6 +235,8 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
       return;
     }
   }
+
+  await registerProject(root, options.craspHome);
 
   console.log(chalk.green("\nCrasp setup complete — protection verified."));
   console.log(chalk.yellow("Restart any open Claude Code session in this project (hooks load at startup), and approve the crasp MCP server when prompted."));

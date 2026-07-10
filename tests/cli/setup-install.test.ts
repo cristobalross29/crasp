@@ -47,6 +47,20 @@ describe("setup installs bundle and wires self-healing absolute-path hooks", () 
     } finally { await cleanup(ctx); }
   });
 
+  it("registers the project in ~/.crasp/projects.json", async () => {
+    const ctx = await makeCtx();
+    try {
+      const result = runSetup(ctx);
+      expect(result.status).toBe(0);
+      const raw = await readFile(path.join(ctx.home, ".crasp", "projects.json"), "utf8");
+      const entries = JSON.parse(raw) as Array<{ path: string; registeredAt: string }>;
+      // realpath both sides: mkdtemp on macOS returns /var/... while the
+      // registry stores the resolved /private/var/... path
+      const { realpath } = await import("node:fs/promises");
+      expect(entries.map((e) => e.path)).toContain(await realpath(ctx.project));
+    } finally { await cleanup(ctx); }
+  });
+
   it("writes canonical pre and post hook commands", async () => {
     const ctx = await makeCtx();
     try {

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { loadConfig } from "../../core/config/index.js";
 import { craspBundlePath } from "../../core/install/index.js";
+import { registerProject } from "../../core/registry/index.js";
 import { getHookStatus } from "./hook.js";
 import { readInstalledVersion } from "./setup.js";
 import type { InstallHealth, ProjectStatus } from "../../types/index.js";
@@ -110,6 +111,10 @@ export async function getInstallHealth(dir = process.cwd()): Promise<InstallHeal
 
 export async function statusCommand(): Promise<void> {
   const status = await getProjectStatus();
+
+  if (status.installHealth.ok) {
+    await registerProject(process.cwd());
+  }
 
   console.log(JSON.stringify(status, null, 2));
 }
