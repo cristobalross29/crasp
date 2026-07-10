@@ -70,4 +70,26 @@ describe("tailLog", () => {
       } finally { tailer.stop(); }
     });
   });
+
+  it("survives the log file being deleted mid-tail and recreated", async () => {
+    await withTmp(async (dir) => {
+      const log = path.join(dir, "events.ndjson");
+      await writeFile(log, '{"old":1}\n');
+      const lines: string[] = [];
+      const tailer = tailLog(log, (l) => lines.push(l), POLL);
+      try {
+        await expect.poll(() => lines.length, { timeout: 2000 }).toBe(0);
+        await appendFile(log, '{"before":1}\n');
+        await expect.poll(() => lines, { timeout: 2000 }).toEqual(['{"before":1}']);
+
+        await rm(log);
+        // Give the tailer several poll ticks to notice the missing file and
+        // prove it doesn't throw/crash while retrying.
+        await new Promise((r) => setTimeout(r, POLL * 6));
+
+        await writeFile(log, '{"after":1}\n');
+        await expect.poll(() => lines, { timeout: 2000 }).toEqual(['{"before":1}', '{"after":1}']);
+      } finally { tailer.stop(); }
+    });
+  });
 });

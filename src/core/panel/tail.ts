@@ -31,21 +31,29 @@ export function tailLog(
       if (!st || stopped) return;
       if (st.size < offset) offset = 0; // truncated or rotated
       if (st.size === offset) return;
-      const fh = await open(logPath, "r");
+      let fh;
+      try {
+        fh = await open(logPath, "r");
+      } catch {
+        return; // deleted/renamed between stat() and open() — retry next tick
+      }
       try {
         const start = offset;
         const len = st.size - start;
         const buf = Buffer.alloc(len);
-        await fh.read(buf, 0, len, start);
-        const nl = buf.lastIndexOf(0x0a);
+        const { bytesRead } = await fh.read(buf, 0, len, start);
+        const data = buf.subarray(0, bytesRead);
+        const nl = data.lastIndexOf(0x0a);
         if (nl === -1) return; // no complete line yet — wait for more bytes
         offset = start + nl + 1;
-        for (const line of buf.subarray(0, nl).toString("utf8").split("\n")) {
+        for (const line of data.subarray(0, nl).toString("utf8").split("\n")) {
           const trimmed = line.trim();
           if (trimmed && !stopped) onLine(trimmed);
         }
+      } catch {
+        // fs error mid-read (deleted/rotated after open) — swallow, retry next tick
       } finally {
-        await fh.close();
+        await fh.close().catch(() => {});
       }
     } finally {
       reading = false;
@@ -58,6 +66,7 @@ export function tailLog(
   let watcher: FSWatcher | null = null;
   try {
     watcher = watch(path.dirname(logPath), () => void readNew());
+    watcher.unref?.();
   } catch {
     // Directory may not exist yet — the poll timer covers it.
   }
