@@ -21,3 +21,13 @@ pnpm dev        # watch-mode build
 See `AGENTS.md` — it covers project navigation, how Claude Code and Codex divide
 responsibilities, shared workflows, and model selection. That is the single source of
 truth for all agents working in this codebase.
+
+<!-- crasp:start -->
+## Crasp
+
+Crasp protects this project via Claude Code PreToolUse/PostToolUse hooks: sensitive-file
+access, dangerous Bash commands, leaked secrets, and prompt injection in tool results.
+**Hooks are machine-local.** If `.claude/settings.json` has no crasp hooks (e.g. a fresh
+clone), protection is NOT active on this machine — run `npx @crasp/cli setup` once.
+Policy rules live in `crasp.policy.yml`. Verify anytime with `crasp status`.
+<!-- crasp:end -->

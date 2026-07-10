@@ -3,8 +3,18 @@ name: Default Safety Policy
 version: 0.1.0
 rules:
   - id: credential-theft
-    description: Assistant must not provide credential theft instructions.
+    description: Assistant must not provide credential theft or exfiltration instructions.
     severity: critical
     target: assistant
-    pattern: "steal (browser )?passwords|credential theft|dump browser logins?|exfiltrate credentials|harvest tokens|scrape saved credentials|extract api keys|capture auth tokens|siphon credentials"
+    pattern: "steal (browser )?passwords?|credential theft|dump (chrome|firefox|browser|saved) (login|credential|password)|exfiltrat(e|ing) (credentials?|tokens?|cookies?|passwords?|secrets?)|extract (saved|stored|browser) (credentials?|passwords?|tokens?|logins?)|harvest (credentials?|passwords?|auth tokens?)"
     message: "Credential theft guidance detected."
+
+# Exceptions: pre-approve specific file access to bypass the ask dialog.
+# Examples:
+# exceptions:
+#   - path: ".env.local"
+#     ops: [read]
+#     reason: "Claude needs to read config for setup tasks"
+#   - path: ".env.local"
+#     ops: [write, edit]
+#     reason: "I manage .env.local directly with Claude's help"
