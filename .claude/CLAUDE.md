@@ -25,6 +25,7 @@ node dist/index.js scan <path>                    # scan files for policy violat
 node dist/index.js check --staged                 # scan staged git files
 node dist/index.js policy list                    # show active rules
 node dist/index.js status                         # verify setup
+node dist/index.js panel                          # open live dashboard for all registered projects
 ```
 
 ## Architecture
@@ -37,6 +38,7 @@ src/
       check.ts            # check, check --staged, check --hook-input
       hook-log.ts         # hook-log command + terminal renderer
       setup.ts            # setup — wires hooks, MCP, CLAUDE.md, gitignore
+      panel.ts            # panel — starts local dashboard server, opens browser
       mcp.ts              # mcp — starts MCP server
       run.ts / report.ts  # scenario runner + report replay
       scan.ts             # directory/file scanner
@@ -47,6 +49,13 @@ src/
     patterns/
       builtin.ts          # BUILTIN_POLICY — 10 always-on rules
       index.ts            # mergeWithBuiltin() — merges user policy over builtin
+    panel/
+      server.ts           # startPanelServer() — http + SSE endpoints
+      page.ts             # PANEL_PAGE — self-contained dashboard HTML
+      tail.ts             # tailLog() — offset-tracking NDJSON tailer
+      aggregate.ts        # aggregateEvents() — daily/rule/project rollups
+    registry/
+      index.ts            # readRegistry(), registerProject() — ~/.crasp/projects.json
     policy/
       loader.ts           # loadPolicy() — YAML → Zod → Policy
       exceptions.ts       # matchesException() — micromatch glob bypass check
@@ -160,6 +169,15 @@ crasp run <scenario.yml>
       → detectViolations()      # policy rules vs. step content
   → buildRunReport() → saveRunReport() → .crasp/runs/<id>/report.json
   → terminal/json/html renderer
+```
+
+### Panel (live dashboard)
+
+```
+crasp panel
+  → readRegistry()            # ~/.crasp/projects.json, written by setup / healthy status
+  → per project: readHookLog() for bootstrap, tailLog() for live SSE
+  → http://127.0.0.1:4269     # single self-contained page, read-only, localhost-only
 ```
 
 ## Sensitive Path Tiers
