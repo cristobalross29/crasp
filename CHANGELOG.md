@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- `crasp watch` (the terminal dashboard) — replaced by `crasp panel`, a live
+  web dashboard of hook activity across all your protected projects.
+
 ---
 
 ## [0.2.1] - 2026-07-07
