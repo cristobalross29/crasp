@@ -135,6 +135,7 @@ describe("crasp panel", () => {
     expect(gone.healthy).toBe(false);
     expect(b.events).toHaveLength(4);
     expect(b.events[0].project).toBe("alpha");
+    expect(b.events[0].projectPath).toBe(project); // stable identity for dedup/collision-safety
     expect(b.aggregates.today).toEqual({ clean: 1, advisory: 0, ask: 1, denied: 1 });
     expect(b.aggregates.topRules.map((r) => r.ruleId).sort()).toEqual(["bash-sudo", "token-leakage"]);
   });

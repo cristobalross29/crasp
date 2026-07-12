@@ -126,7 +126,7 @@ async function buildBootstrap(
         }
         for (const entry of entries) {
           if (sinceMs === null || Date.parse(entry.ts) >= sinceMs) {
-            all.push({ ...entry, project: name });
+            all.push({ ...entry, project: name, projectPath: dir });
           }
         }
         return { path: dir, name, healthy: health.ok, problems: health.problems, lastEventTs, missing: false };
@@ -167,7 +167,7 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
       } catch {
         return; // corrupt line — same tolerance as readHookLog
       }
-      const tagged = { ...(entry as object), project: path.basename(dir) };
+      const tagged = { ...(entry as object), project: path.basename(dir), projectPath: dir };
       const frame = `data: ${JSON.stringify(tagged)}\n\n`;
       for (const client of clients) client.write(frame);
     })

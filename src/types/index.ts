@@ -194,6 +194,8 @@ export interface RegistryEntry {
 export interface TaggedEvent extends HookLogEntry {
   /** Project display name (basename of the project root). */
   project: string;
+  /** Absolute project root — the stable identity when basenames collide. */
+  projectPath: string;
 }
 
 export interface PanelDailyCount {

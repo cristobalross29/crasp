@@ -294,11 +294,11 @@ li.runrow:hover { color: var(--text); }
     return 'clean';
   }
   function isFlagged(ev) { return bucket(ev.outcome) !== 'clean'; }
-  // Include every semantic field (and project + phase + tier) so two projects'
-  // same-millisecond events, or a pre/post pair, never collide into one key.
+  // JSON-encode every semantic field (identity keyed on projectPath, which is
+  // unique, not the display basename) so two same-named projects, a pre/post
+  // pair, or a value containing our delimiter can never collide into one key.
   function eventKey(ev) {
-    return [ev.ts, ev.project, ev.tool, ev.filePath, ev.outcome, ev.ruleId, ev.phase, ev.tier]
-      .map(function (v) { return v == null ? '' : String(v); }).join('|');
+    return JSON.stringify([ev.projectPath, ev.ts, ev.tool, ev.filePath, ev.outcome, ev.ruleId, ev.phase, ev.tier]);
   }
   function localDateKey(ts) {
     var d = new Date(ts);
@@ -524,7 +524,7 @@ li.runrow:hover { color: var(--text); }
       // Key a run by its OLDEST event so a prepended live clean event extends
       // the same run without losing its expanded state on re-render.
       var oldest = run[run.length - 1];
-      var key = oldest.ts + '|' + oldest.project + '|' + oldest.tool + '|' + (oldest.filePath == null ? '' : oldest.filePath);
+      var key = JSON.stringify([oldest.projectPath, oldest.ts, oldest.tool, oldest.filePath]);
       if (run.length < 3 || expandedRuns[key]) {
         run.forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
       } else {
@@ -575,7 +575,7 @@ li.runrow:hover { color: var(--text); }
     var wrap = el('pcards');
     wrap.textContent = '';
     var counts = Object.create(null);
-    events.forEach(function (ev) { counts[ev.project] = (counts[ev.project] || 0) + 1; });
+    events.forEach(function (ev) { counts[ev.projectPath] = (counts[ev.projectPath] || 0) + 1; });
     boot.projects.forEach(function (p) {
       var card = document.createElement('div');
       card.className = p.missing ? 'pcard gone' : 'pcard';
@@ -591,7 +591,7 @@ li.runrow:hover { color: var(--text); }
         card.appendChild(text('div', 'pmeta', 'folder missing — was this project moved or deleted?'));
       } else {
         var last = p.lastEventTs ? new Date(p.lastEventTs).toLocaleString() : 'no events yet';
-        card.appendChild(text('div', 'pmeta', (counts[p.name] || 0) + ' events in window · last: ' + last));
+        card.appendChild(text('div', 'pmeta', (counts[p.path] || 0) + ' events in window · last: ' + last));
         if (!p.healthy) p.problems.forEach(function (pr) { card.appendChild(text('div', 'pproblem', pr)); });
       }
       wrap.appendChild(card);
@@ -629,7 +629,7 @@ li.runrow:hover { color: var(--text); }
   function bumpProject(b, ev) {
     for (var i = 0; i < b.projects.length; i++) {
       var p = b.projects[i];
-      if (!p.missing && p.name === ev.project) {
+      if (!p.missing && p.path === ev.projectPath) {
         if (!p.lastEventTs || Date.parse(ev.ts) > Date.parse(p.lastEventTs)) p.lastEventTs = ev.ts;
         return;
       }
@@ -658,8 +658,11 @@ li.runrow:hover { color: var(--text); }
       (b.rules || []).forEach(function (r) { serverRules[r.id] = r; });
       seen = Object.create(null);
       expandedRuns = Object.create(null);
+      // Seed dedup from bootstrap events ALWAYS — even in live mode, where they
+      // are not displayed — so a buffered SSE copy of a bootstrap event can't be
+      // counted twice into today/daily.
+      b.events.forEach(function (ev) { seen[eventKey(ev)] = true; });
       var merged = range === 'live' ? [] : b.events.slice();
-      merged.forEach(function (ev) { seen[eventKey(ev)] = true; });
       totals = { clean: b.aggregates.today.clean, advisory: b.aggregates.today.advisory,
                  ask: b.aggregates.today.ask, denied: b.aggregates.today.denied };
       // Merge any SSE events that arrived while this bootstrap was in flight, so
@@ -680,8 +683,21 @@ li.runrow:hover { color: var(--text); }
       buffer = [];
       renderAll();
     }).catch(function () {
-      if (myGen === loadGen) inflight = false;
       el('live-dot').classList.remove('live');
+      if (myGen !== loadGen) return; // a newer load owns state
+      inflight = false;
+      // The bootstrap failed, but SSE events buffered during it must not be
+      // dropped — apply the unseen, in-cutoff ones against the prior state.
+      var pending = buffer;
+      buffer = [];
+      var cutoff = freshTs();
+      pending.forEach(function (ev) {
+        if (cutoff && ev.ts && Date.parse(ev.ts) < Date.parse(cutoff)) return;
+        var k = eventKey(ev);
+        if (seen[k]) return;
+        seen[k] = true;
+        applyLiveEvent(ev);
+      });
     });
   }
 
