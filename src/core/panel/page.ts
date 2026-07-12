@@ -272,7 +272,8 @@ li.runrow:hover { color: var(--text); }
     return null;
   }
   function has(obj, k) { return Object.prototype.hasOwnProperty.call(obj, k); }
-  function ruleInfo(id) {
+  function ruleInfo(rawId) {
+    var id = rawId == null ? '' : String(rawId); // a malformed log line could carry a non-string id
     if (has(RULE_INFO, id)) return RULE_INFO[id];
     var p = providerRuleInfo(id);
     if (p) return p;
@@ -696,7 +697,9 @@ li.runrow:hover { color: var(--text); }
         var k = eventKey(ev);
         if (seen[k]) return;
         seen[k] = true;
-        applyLiveEvent(ev);
+        // A render throw here (e.g. a malformed log line) must not escape the
+        // terminal catch as an unhandled rejection or abort the rest.
+        try { applyLiveEvent(ev); } catch (e) { /* skip this event */ }
       });
     });
   }
@@ -740,7 +743,7 @@ li.runrow:hover { color: var(--text); }
     var key = eventKey(ev);
     if (seen[key]) return;                    // already delivered by bootstrap or an earlier frame
     seen[key] = true;
-    applyLiveEvent(ev);
+    try { applyLiveEvent(ev); } catch (e) { /* a malformed frame must not break the stream */ }
   };
 
   route();

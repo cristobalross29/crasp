@@ -44,7 +44,6 @@ export function aggregateEvents(
   const todayKey = localDateKey(now);
   const today = { clean: 0, advisory: 0, ask: 0, denied: 0 };
   const ruleCounts = new Map<string, number>();
-  const projectCounts = new Map<string, number>();
 
   for (const event of events) {
     const day = dayIndex.get(localDateKey(new Date(event.ts)));
@@ -53,16 +52,12 @@ export function aggregateEvents(
     day[bucket]++;
     if (day.date === todayKey) today[bucket]++;
     if (event.ruleId) ruleCounts.set(event.ruleId, (ruleCounts.get(event.ruleId) ?? 0) + 1);
-    projectCounts.set(event.project, (projectCounts.get(event.project) ?? 0) + 1);
   }
 
   const topRules = [...ruleCounts.entries()]
     .map(([ruleId, count]) => ({ ruleId, count }))
     .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId))
     .slice(0, 8);
-  const byProject = [...projectCounts.entries()]
-    .map(([project, count]) => ({ project, count }))
-    .sort((a, b) => b.count - a.count || a.project.localeCompare(b.project));
 
-  return { today, daily, topRules, byProject };
+  return { today, daily, topRules };
 }

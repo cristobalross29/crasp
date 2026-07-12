@@ -11,6 +11,7 @@ function ev(o: Partial<TaggedEvent>): TaggedEvent {
     filePath: "src/x.ts",
     outcome: "clean",
     project: "alpha",
+    projectPath: "/repo/alpha",
     ...o,
   };
 }
@@ -35,7 +36,6 @@ describe("aggregateEvents", () => {
     expect(a.daily[0].date).toBe("2026-06-10");
     expect(a.daily.every((d) => d.clean + d.advisory + d.ask + d.denied === 0)).toBe(true);
     expect(a.topRules).toEqual([]);
-    expect(a.byProject).toEqual([]);
   });
 
   it("counts today's buckets and daily series by local date", () => {
@@ -53,27 +53,24 @@ describe("aggregateEvents", () => {
     expect(yesterday?.advisory).toBe(1);
   });
 
-  it("ranks topRules and byProject descending, rules capped at 8", () => {
+  it("ranks topRules descending, rules capped at 8", () => {
     const events: TaggedEvent[] = [];
     for (let i = 0; i < 3; i++) events.push(ev({ outcome: "ask", ruleId: "r-big" }));
     for (let i = 0; i < 10; i++) events.push(ev({ outcome: "ask", ruleId: `r-${i}` }));
-    events.push(ev({ project: "beta" }));
     const a = aggregateEvents(events, NOW);
     expect(a.topRules[0]).toEqual({ ruleId: "r-big", count: 3 });
     expect(a.topRules).toHaveLength(8);
-    expect(a.byProject[0].project).toBe("alpha");
-    expect(a.byProject[1]).toEqual({ project: "beta", count: 1 });
   });
 
   it("ignores events older than the 30-day window", () => {
-    const a = aggregateEvents([ev({ ts: "2026-05-01T00:00:00.000Z" })], NOW);
-    expect(a.byProject).toEqual([]);
+    const a = aggregateEvents([ev({ ts: "2026-05-01T00:00:00.000Z", ruleId: "old" })], NOW);
+    expect(a.topRules).toEqual([]);
   });
 
   it("supports a 90-day window", () => {
-    const a = aggregateEvents([ev({ ts: "2026-05-01T12:00:00.000Z" })], NOW, 90);
+    const a = aggregateEvents([ev({ ts: "2026-05-01T12:00:00.000Z", ruleId: "in-window" })], NOW, 90);
     expect(a.daily).toHaveLength(90);
     expect(a.daily[89].date).toBe("2026-07-09");
-    expect(a.byProject).toEqual([{ project: "alpha", count: 1 }]);
+    expect(a.topRules).toEqual([{ ruleId: "in-window", count: 1 }]);
   });
 });

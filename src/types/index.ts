@@ -212,7 +212,6 @@ export interface PanelAggregates {
   /** One entry per day of the requested window, oldest first, ending with today. Zero-filled. */
   daily: PanelDailyCount[];
   topRules: Array<{ ruleId: string; count: number }>;
-  byProject: Array<{ project: string; count: number }>;
 }
 
 export interface PanelProjectInfo {
