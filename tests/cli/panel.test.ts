@@ -70,17 +70,18 @@ describe("crasp panel", () => {
         "    pattern: whatever",
       ].join("\n") + "\n"
     );
-    // Explicit timestamps: one sentinel 20 days back (outside a 10-day chart
-    // window, inside the 30d default), one 5 days back (inside 30d, before a
-    // 2-day cutoff), three today. newestTs is the most recent so lastEventTs is
-    // deterministic and distinguishable from a since-filtered computation.
+    // Explicit timestamps: one sentinel exactly 10 days back — one day OUTSIDE a
+    // 10-day chart window (today..today-9), so it's excluded by a correct days=10
+    // read but leaks in under an off-by-one (11-day) OR a wider (30-day) window.
+    // Plus one 5 days back (inside 30d, before a 2-day cutoff) and three today.
+    // newestTs is the most recent so lastEventTs is deterministic.
     const t0 = Date.now();
     oldTs = new Date(t0 - 5 * 86_400_000).toISOString();
     newestTs = new Date(t0 - 1_000).toISOString();
     await writeFile(
       path.join(project, ".crasp", "events.ndjson"),
       [
-        entryLine({ ts: new Date(t0 - 20 * 86_400_000).toISOString(), tool: "Read", filePath: "far.ts", outcome: "clean" }),
+        entryLine({ ts: new Date(t0 - 10 * 86_400_000).toISOString(), tool: "Read", filePath: "far.ts", outcome: "clean" }),
         entryLine({ ts: oldTs, tool: "Edit", filePath: "old.ts", outcome: "clean" }),
         entryLine({ ts: new Date(t0 - 3_000).toISOString(), outcome: "clean" }),
         entryLine({ ts: new Date(t0 - 2_000).toISOString(), tool: "Bash", filePath: "sudo rm x", outcome: "ask", ruleId: "bash-sudo" }),
@@ -142,7 +143,7 @@ describe("crasp panel", () => {
     const gone = b.projects.find((p) => p.name === "gone")!;
     expect(gone.missing).toBe(true);
     expect(gone.healthy).toBe(false);
-    expect(b.events).toHaveLength(5); // 20d sentinel + 5d + 3 today (all within 30d)
+    expect(b.events).toHaveLength(5); // 10d sentinel + 5d + 3 today (all within 30d)
     expect(b.events[0].project).toBe("alpha");
     expect(b.events[0].projectPath).toBe(project); // stable identity for dedup/collision-safety
     expect(b.aggregates.today).toEqual({ clean: 1, advisory: 0, ask: 1, denied: 1 });
@@ -159,10 +160,11 @@ describe("crasp panel", () => {
     for (const e of b.events) {
       expect(e.ts.slice(0, 10) >= oldest, e.ts).toBe(true);
     }
-    // The 20-day sentinel is outside the 10-day window: a misaligned (wider)
-    // read window would leak it into the feed and fail the invariant above.
+    // The 10-day sentinel sits one day outside this window: a misaligned read
+    // (off-by-one 11-day OR a wider 30-day window) would leak it into the feed
+    // and fail both the invariant above and the assertions here.
     expect(b.events.some((e) => e.filePath === "far.ts")).toBe(false);
-    expect(b.events).toHaveLength(4); // 5d + 3 today; the 20-day sentinel is excluded
+    expect(b.events).toHaveLength(4); // 5d + 3 today; the 10-day sentinel is excluded
   });
 
   it("since filters events and aggregates numerically, but not lastEventTs", async () => {
