@@ -12,6 +12,7 @@ import type { PanelBootstrap, PanelProjectInfo, PanelRuleInfo, TaggedEvent } fro
 
 const EVENTS_CAP = 5000;
 const HEARTBEAT_MS = 15_000;
+const ALLOWED_DAYS = new Set([10, 15, 30, 45, 60, 90]);
 
 // Registry entries whose folder is genuinely gone (vs. a transient/permission
 // error) are shown as "missing"; anything else is treated as a live project so
@@ -196,7 +197,8 @@ export async function startPanelServer(opts: PanelServerOptions): Promise<PanelS
 
       if (url === "/api/bootstrap") {
         const params = new URL(req.url ?? "/", "http://localhost").searchParams;
-        const days = params.get("days") === "90" ? 90 : 30; // anything else falls back to 30
+        const daysNum = Number(params.get("days"));
+        const days = ALLOWED_DAYS.has(daysNum) ? daysNum : 30; // anything else falls back to 30
         const sinceMs = parseSince(params.get("since"));
         void buildBootstrap(dirs, opts.getProjectHealth, days, sinceMs)
           .then((bootstrap) => {

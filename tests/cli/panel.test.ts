@@ -105,6 +105,13 @@ describe("crasp panel", () => {
     for (const marker of [
       'data-tab="overview"', 'data-tab="activity"', 'data-tab="rules"', 'data-tab="projects"',
       'id="verdict"', 'id="feed"', 'id="start-fresh"',
+      // range dropdown + the 7 options
+      'id="range"', 'value="live"', 'value="10"', 'value="15"', 'value="30"', 'value="45"', 'value="60"', 'value="90"',
+      'id="live-restart"',
+      // chart: legend, hover tooltip, axis, title
+      'class="legend"', 'id="chart-tip"', 'id="chart-axis"', 'id="chart-title"',
+      // rules explainer
+      'how many times it fired',
     ]) {
       expect(html, marker).toContain(marker);
     }
@@ -215,11 +222,11 @@ describe("crasp panel", () => {
     expect(res.status).toBe(404);
   });
 
-  it("bootstrap honors days=90 and falls back to 30 for anything else", async () => {
-    const b90 = (await (await fetch(url + "/api/bootstrap?days=90")).json()) as PanelBootstrap;
-    expect(b90.aggregates.daily).toHaveLength(90);
-    const bOther = (await (await fetch(url + "/api/bootstrap?days=7")).json()) as PanelBootstrap;
-    expect(bOther.aggregates.daily).toHaveLength(30);
+  it("bootstrap honors allowlisted day ranges and falls back to 30", async () => {
+    for (const [param, expected] of [["45", 45], ["10", 10], ["15", 15], ["60", 60], ["90", 90], ["7", 30], ["live", 30], ["", 30]] as const) {
+      const b = (await (await fetch(url + "/api/bootstrap?days=" + param)).json()) as PanelBootstrap;
+      expect(b.aggregates.daily, "days=" + param).toHaveLength(expected);
+    }
   });
 
   it("rejects a spoofed Host header (DNS-rebinding defense)", async () => {

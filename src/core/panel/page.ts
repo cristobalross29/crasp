@@ -44,12 +44,39 @@ header {
   padding: 7px 14px; border-radius: 8px;
 }
 .tabs a.on { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
-.range { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--surface); }
-.range button {
-  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px;
-  font-weight: 600; padding: 4px 13px; border-radius: 999px; cursor: pointer;
+.range { display: flex; align-items: center; gap: 8px; }
+.range-label { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.range select {
+  font: inherit; font-size: 13.5px; font-weight: 600; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 10px; cursor: pointer;
 }
-.range button.on { background: var(--ok); color: var(--surface); }
+.live-restart {
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  color: var(--text); background: transparent; border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px;
+}
+.chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.lg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sw.ok { background: var(--ok); } .sw.adv { background: var(--adv); } .sw.warn { background: var(--warn); } .sw.deny { background: var(--deny); }
+.chart-wrap { position: relative; }
+#spark { height: 120px; }
+.chart-axis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--muted); font-size: 11px; }
+.chart-tip {
+  position: absolute; pointer-events: none; z-index: 5; transform: translate(-50%, -100%);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); white-space: nowrap;
+}
+.chart-tip .tt-date { font-weight: 700; margin-bottom: 4px; }
+.chart-tip .tt-row { display: flex; justify-content: space-between; gap: 14px; }
+.chart-tip .tt-row .tt-n { font-variant-numeric: tabular-nums; }
+.chart-tip .tt-total { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; font-weight: 700; }
+.hovcol { fill: transparent; cursor: default; }
+.hovcol.on { fill: var(--border); opacity: .35; }
+.rules-intro { color: var(--muted); font-size: 13.5px; margin-bottom: 14px; }
+.rule-count .unit { display: block; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 main { max-width: 880px; margin: 0 auto; }
 section[data-tab] { display: none; }
 section[data-tab].on { display: block; }
@@ -153,11 +180,19 @@ li.runrow:hover { color: var(--text); }
     <a href="#/rules" data-nav="rules">Rules</a>
     <a href="#/projects" data-nav="projects">Projects</a>
   </nav>
-  <nav class="range" id="range" aria-label="History range">
-    <button data-range="30" class="on">30d</button>
-    <button data-range="90">90d</button>
-    <button data-range="live">live</button>
-  </nav>
+  <label class="range">
+    <span class="range-label">Showing</span>
+    <select id="range" aria-label="History range">
+      <option value="live">Live</option>
+      <option value="10">Last 10 days</option>
+      <option value="15">Last 15 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="45">Last 45 days</option>
+      <option value="60">Last 60 days</option>
+      <option value="90">Last 90 days</option>
+    </select>
+    <button id="live-restart" class="live-restart" hidden>&#8635; Restart</button>
+  </label>
 </header>
 <main>
 
@@ -172,8 +207,20 @@ li.runrow:hover { color: var(--text); }
     <div class="stat deny"><div class="n" id="s-blocked">0</div><div class="l">blocked today</div></div>
   </div>
   <div class="card">
-    <h2>Last 14 days</h2>
-    <svg id="spark" viewBox="0 0 560 90" preserveAspectRatio="none" aria-label="14-day activity"></svg>
+    <div class="chart-head">
+      <h2 id="chart-title">Last 30 days</h2>
+      <div class="legend">
+        <span class="lg"><i class="sw ok"></i>Clean</span>
+        <span class="lg"><i class="sw adv"></i>Advisory</span>
+        <span class="lg"><i class="sw warn"></i>Asked</span>
+        <span class="lg"><i class="sw deny"></i>Blocked</span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <svg id="spark" viewBox="0 0 600 120" preserveAspectRatio="none" aria-label="activity by day"></svg>
+      <div id="chart-axis" class="chart-axis"></div>
+      <div id="chart-tip" class="chart-tip" hidden></div>
+    </div>
   </div>
   <div class="card">
     <div class="latest" id="latest">No events yet.</div>
@@ -203,6 +250,7 @@ li.runrow:hover { color: var(--text); }
 
 <section data-tab="rules">
   <div class="card">
+    <p class="rules-intro">Each protection below is a rule Claude's actions are checked against — and how many times it fired in the selected window.</p>
     <div id="rules-empty" class="empty" hidden>
       <div class="big">Nothing has fired in this window</div>
       <div>That is a good thing.</div>
@@ -377,8 +425,12 @@ li.runrow:hover { color: var(--text); }
   var loadGen = 0;            // only the newest bootstrap response may apply
   var inflight = false;       // a bootstrap fetch is in progress
   var buffer = [];            // SSE events that arrived during an in-flight load
+  var liveSince = null;       // Live mode's transient "count from now" stamp (in-memory)
 
   function freshTs() { try { return localStorage.getItem(FRESH_KEY); } catch (e) { return null; } }
+  // The active cutoff: Live uses its in-memory stamp; every other range uses the
+  // persisted "Start fresh" cutoff (if any). Compared by epoch everywhere.
+  function activeCutoff() { return range === 'live' ? liveSince : freshTs(); }
 
   // ---- router ----
   function currentTab() {
@@ -422,13 +474,61 @@ li.runrow:hover { color: var(--text); }
     el('s-asked').textContent = totals.ask;
     el('s-blocked').textContent = totals.denied;
   }
-  function renderSpark() {
-    if (!boot) return;
+  function fmtAxis(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr;
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[d.getMonth()] + ' ' + d.getDate();
+  }
+  function chartDays() {
+    if (range === 'live') {
+      // Build an ascending daily series from the live events (usually just today).
+      var byDay = Object.create(null);
+      events.forEach(function (ev) {
+        var k = localDateKey(ev.ts);
+        if (!k) return;
+        if (!byDay[k]) byDay[k] = { date: k, clean: 0, advisory: 0, ask: 0, denied: 0 };
+        byDay[k][bucket(ev.outcome)] += 1;
+      });
+      var keys = Object.keys(byDay).sort();
+      if (!keys.length) return [{ date: localDateKey(new Date().toISOString()), clean: 0, advisory: 0, ask: 0, denied: 0 }];
+      return keys.map(function (k) { return byDay[k]; });
+    }
+    if (!boot) return [];
+    var n = Number(range) || 30;
+    return boot.aggregates.daily.slice(-n);
+  }
+  function showTip(e, d, hov) {
+    var tip = el('chart-tip');
+    var rect = el('spark').parentNode.getBoundingClientRect();
+    hov.setAttribute('class', 'hovcol on');
+    tip.textContent = '';
+    tip.appendChild(text('div', 'tt-date', fmtAxis(d.date)));
+    [['Clean', d.clean], ['Advisory', d.advisory], ['Asked', d.ask], ['Blocked', d.denied]].forEach(function (row) {
+      var r = document.createElement('div'); r.className = 'tt-row';
+      r.appendChild(text('span', null, row[0]));
+      r.appendChild(text('span', 'tt-n', row[1]));
+      tip.appendChild(r);
+    });
+    var tot = document.createElement('div'); tot.className = 'tt-row tt-total';
+    tot.appendChild(text('span', null, 'Total'));
+    tot.appendChild(text('span', 'tt-n', d.clean + d.advisory + d.ask + d.denied));
+    tip.appendChild(tot);
+    tip.style.left = (e.clientX - rect.left) + 'px';
+    tip.style.top = (e.clientY - rect.top - 10) + 'px';
+    tip.hidden = false;
+  }
+  function renderChart() {
     var svg = el('spark');
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var daily = boot.aggregates.daily.slice(-14);
+    var axis = el('chart-axis'); axis.textContent = '';
+    el('chart-tip').hidden = true;
+    el('chart-title').textContent = (range === 'live')
+      ? 'Live — since ' + hhmm(liveSince || new Date().toISOString())
+      : 'Last ' + (Number(range) || 30) + ' days';
+    var daily = chartDays();
     if (!daily.length) return;
-    var W = 560, H = 90, PAD = 4;
+    var W = 600, H = 120, PAD = daily.length > 45 ? 1 : 2;
     var bw = (W - PAD * (daily.length - 1)) / daily.length;
     var max = 1;
     daily.forEach(function (d) { max = Math.max(max, d.clean + d.advisory + d.ask + d.denied); });
@@ -439,12 +539,12 @@ li.runrow:hover { color: var(--text); }
       var total = d.clean + d.advisory + d.ask + d.denied;
       ['clean', 'advisory', 'ask', 'denied'].forEach(function (k) {
         if (!d[k]) return;
-        var h = (d[k] / max) * (H - 8);
+        var h = (d[k] / max) * (H - 6);
         y -= h;
         var r = document.createElementNS(ns, 'rect');
         r.setAttribute('x', x); r.setAttribute('y', y);
         r.setAttribute('width', bw); r.setAttribute('height', h);
-        r.setAttribute('rx', 2); r.setAttribute('fill', colors[k]);
+        r.setAttribute('fill', colors[k]);
         svg.appendChild(r);
       });
       if (total === 0) {
@@ -454,10 +554,26 @@ li.runrow:hover { color: var(--text); }
         stub.setAttribute('fill', 'var(--border)');
         svg.appendChild(stub);
       }
-      var title = document.createElementNS(ns, 'title');
-      title.textContent = d.date + ': ' + total + ' events';
-      svg.appendChild(title);
+      // Full-height transparent hover column — the real bars are poor hit targets.
+      var hov = document.createElementNS(ns, 'rect');
+      hov.setAttribute('class', 'hovcol');
+      hov.setAttribute('x', x); hov.setAttribute('y', 0);
+      hov.setAttribute('width', bw + PAD); hov.setAttribute('height', H);
+      (function (dd, hh) {
+        hh.addEventListener('mousemove', function (e) { showTip(e, dd, hh); });
+        hh.addEventListener('mouseleave', function () { hh.setAttribute('class', 'hovcol'); el('chart-tip').hidden = true; });
+      })(d, hov);
+      svg.appendChild(hov);
     });
+    // Axis: first, last, and evenly-spaced interior — up to 5 labels.
+    var count = Math.min(5, daily.length);
+    var placed = Object.create(null);
+    for (var a = 0; a < count; a++) {
+      var ix = Math.round(a * (daily.length - 1) / Math.max(1, count - 1));
+      if (placed[ix]) continue;
+      placed[ix] = true;
+      axis.appendChild(text('span', null, fmtAxis(daily[ix].date)));
+    }
   }
   function renderLatest() {
     var target = el('latest');
@@ -558,7 +674,9 @@ li.runrow:hover { color: var(--text); }
       main.appendChild(name);
       if (info[1]) main.appendChild(text('div', 'rule-desc', info[1]));
       row.appendChild(main);
-      row.appendChild(text('div', 'rule-count', counts[id]));
+      var countCell = text('div', 'rule-count', counts[id]);
+      countCell.appendChild(text('span', 'unit', 'times fired'));
+      row.appendChild(countCell);
       var barWrap = document.createElement('div');
       barWrap.className = 'rule-bar';
       var bar = document.createElement('div');
@@ -615,7 +733,7 @@ li.runrow:hover { color: var(--text); }
   }
 
   function renderAll() {
-    renderVerdict(); renderSpark(); renderLatest(); renderFresh();
+    renderVerdict(); renderChart(); renderLatest(); renderFresh();
     renderFeed(); renderRules(); renderProjects();
   }
 
@@ -640,8 +758,10 @@ li.runrow:hover { color: var(--text); }
     events.unshift(ev);
     if (events.length > 5000) events.pop();
     if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
-    if (boot) { bumpDaily(boot, ev); bumpProject(boot, ev); }
-    renderAll(); // includes spark + projects so no view goes stale
+    // In live the chart is derived from the events array; elsewhere bump the
+    // server's daily buckets. Either way keep project last-seen fresh.
+    if (boot) { if (range !== 'live') bumpDaily(boot, ev); bumpProject(boot, ev); }
+    renderAll(); // includes chart + projects so no view goes stale
   }
 
   // ---- data ----
@@ -649,9 +769,13 @@ li.runrow:hover { color: var(--text); }
     var myGen = ++loadGen;
     inflight = true;
     buffer = [];
-    var q = '/api/bootstrap?days=' + (range === '90' ? '90' : '30');
-    var ts = freshTs();
-    if (ts) q += '&since=' + encodeURIComponent(ts);
+    var isLive = range === 'live';
+    // Live is just a windowed load with an in-memory since cutoff: the server
+    // filters BOTH events and aggregates to >= liveSince, so tiles/feed/chart
+    // zero automatically and count forward. No special client zeroing needed.
+    var q = '/api/bootstrap?days=' + (isLive ? '30' : range);
+    var cutoff = activeCutoff();
+    if (cutoff) q += '&since=' + encodeURIComponent(cutoff);
     fetch(q).then(function (r) { return r.json(); }).then(function (b) {
       if (myGen !== loadGen) return; // a newer load superseded this one; it owns state
       boot = b;
@@ -659,16 +783,12 @@ li.runrow:hover { color: var(--text); }
       (b.rules || []).forEach(function (r) { serverRules[r.id] = r; });
       seen = Object.create(null);
       expandedRuns = Object.create(null);
-      // Seed dedup from bootstrap events ALWAYS — even in live mode, where they
-      // are not displayed — so a buffered SSE copy of a bootstrap event can't be
-      // counted twice into today/daily.
       b.events.forEach(function (ev) { seen[eventKey(ev)] = true; });
-      var merged = range === 'live' ? [] : b.events.slice();
+      var merged = b.events.slice();
       totals = { clean: b.aggregates.today.clean, advisory: b.aggregates.today.advisory,
                  ask: b.aggregates.today.ask, denied: b.aggregates.today.denied };
-      // Merge any SSE events that arrived while this bootstrap was in flight, so
-      // the race between reading the log and the tailer starting can't drop them.
-      var cutoff = freshTs();
+      // Merge SSE events that arrived while this bootstrap was in flight (the
+      // read-vs-tailer race), respecting the same cutoff and dedup.
       buffer.forEach(function (ev) {
         if (cutoff && ev.ts && Date.parse(ev.ts) < Date.parse(cutoff)) return;
         var k = eventKey(ev);
@@ -676,7 +796,8 @@ li.runrow:hover { color: var(--text); }
         seen[k] = true;
         merged.push(ev);
         if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
-        bumpDaily(b, ev); bumpProject(b, ev);
+        if (!isLive) bumpDaily(b, ev);
+        bumpProject(b, ev);
       });
       merged.sort(function (a, c) { return Date.parse(c.ts) - Date.parse(a.ts); }); // newest first, by instant
       events = merged;
@@ -687,18 +808,18 @@ li.runrow:hover { color: var(--text); }
       el('live-dot').classList.remove('live');
       if (myGen !== loadGen) return; // a newer load owns state
       inflight = false;
-      // The bootstrap failed, but SSE events buffered during it must not be
-      // dropped — apply the unseen, in-cutoff ones against the prior state.
+      // Live must still read as zeroed if its bootstrap failed.
+      if (isLive) { events = []; totals = { clean: 0, advisory: 0, ask: 0, denied: 0 }; renderAll(); }
+      // Buffered SSE events must not be dropped — apply the unseen, in-cutoff ones.
       var pending = buffer;
       buffer = [];
-      var cutoff = freshTs();
       pending.forEach(function (ev) {
         if (cutoff && ev.ts && Date.parse(ev.ts) < Date.parse(cutoff)) return;
         var k = eventKey(ev);
         if (seen[k]) return;
         seen[k] = true;
-        // A render throw here (e.g. a malformed log line) must not escape the
-        // terminal catch as an unhandled rejection or abort the rest.
+        // A render throw (e.g. a malformed log line) must not escape the terminal
+        // catch as an unhandled rejection or abort the rest.
         try { applyLiveEvent(ev); } catch (e) { /* skip this event */ }
       });
     });
@@ -708,17 +829,16 @@ li.runrow:hover { color: var(--text); }
     try { localStorage.setItem(FRESH_KEY, new Date().toISOString()); } catch (e) {}
     loadAll();
   };
-  el('range').addEventListener('click', function (e) {
-    var t = e.target;
-    var r = t && t.getAttribute ? t.getAttribute('data-range') : null;
-    if (!r || r === range) return;
-    range = r;
-    var buttons = el('range').querySelectorAll('button');
-    for (var i = 0; i < buttons.length; i++) {
-      buttons[i].className = buttons[i].getAttribute('data-range') === r ? 'on' : '';
-    }
+  function selectRange(v) {
+    range = v;
+    liveSince = (v === 'live') ? new Date().toISOString() : null;
+    el('live-restart').hidden = (v !== 'live');
     loadAll();
-  });
+  }
+  el('range').addEventListener('change', function (e) { selectRange(e.target.value); });
+  // A native <select> emits no 'change' when Live is re-picked, so a dedicated
+  // control re-stamps liveSince to restart the live session from zero.
+  el('live-restart').onclick = function () { selectRange('live'); };
   el('chips').addEventListener('click', function (e) {
     var t = e.target;
     var f = t && t.getAttribute ? t.getAttribute('data-filter') : null;
@@ -731,14 +851,21 @@ li.runrow:hover { color: var(--text); }
     renderFeed();
   });
 
+  var everOpened = false;
   var es = new EventSource('/api/stream');
-  es.onopen = function () { el('live-dot').classList.add('live'); };
+  es.onopen = function () {
+    el('live-dot').classList.add('live');
+    // On RE-connect, refetch: events written while the stream was down are not
+    // replayed by the server, so a full bootstrap read reconciles them.
+    if (everOpened) loadAll();
+    everOpened = true;
+  };
   es.onerror = function () { el('live-dot').classList.remove('live'); };
   es.onmessage = function (m) {
     var ev;
     try { ev = JSON.parse(m.data); } catch (e) { return; }
-    var ts = freshTs();
-    if (ts && ev.ts && Date.parse(ev.ts) < Date.parse(ts)) return;   // before the "start fresh" cutoff
+    var ts = activeCutoff();
+    if (ts && ev.ts && Date.parse(ev.ts) < Date.parse(ts)) return;   // before the active cutoff
     if (inflight) { buffer.push(ev); return; }  // merged when the in-flight bootstrap resolves
     var key = eventKey(ev);
     if (seen[key]) return;                    // already delivered by bootstrap or an earlier frame
