@@ -145,10 +145,18 @@ describe("crasp panel", () => {
     expect(b.events[0].projectPath).toBe(project); // stable identity for dedup/collision-safety
     expect(b.aggregates.today).toEqual({ clean: 1, advisory: 0, ask: 1, denied: 1 });
     expect(b.aggregates.topRules.map((r) => r.ruleId).sort()).toEqual(["bash-sudo", "token-leakage"]);
-    // Window alignment: every event in the feed lands in a chart bucket, so the
-    // feed count and the chart's daily-bucket sum agree (no partial extra day).
-    const dailySum = b.aggregates.daily.reduce((n, d) => n + d.clean + d.advisory + d.ask + d.denied, 0);
-    expect(dailySum).toBe(b.events.length);
+  });
+
+  it("the read window aligns to the oldest chart bucket (feed has nothing older)", async () => {
+    // The invariant, independent of the 5000-event cap: no feed event predates
+    // the oldest daily bucket, so the chart can bucket everything the feed shows.
+    // (Tests run with TZ=UTC, so ts.slice(0,10) equals the local date key.)
+    const b = (await (await fetch(url + "/api/bootstrap?days=10")).json()) as PanelBootstrap;
+    expect(b.aggregates.daily).toHaveLength(10);
+    const oldest = b.aggregates.daily[0].date;
+    for (const e of b.events) {
+      expect(e.ts.slice(0, 10) >= oldest, e.ts).toBe(true);
+    }
   });
 
   it("since filters events and aggregates numerically, but not lastEventTs", async () => {

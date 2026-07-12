@@ -202,9 +202,9 @@ li.runrow:hover { color: var(--text); }
     <div class="sub" id="verdict-sub"></div>
   </div>
   <div class="stat-row">
-    <div class="stat ok"><div class="n" id="s-checked">0</div><div class="l">checked today</div></div>
-    <div class="stat warn"><div class="n" id="s-asked">0</div><div class="l">asked today</div></div>
-    <div class="stat deny"><div class="n" id="s-blocked">0</div><div class="l">blocked today</div></div>
+    <div class="stat ok"><div class="n" id="s-checked">0</div><div class="l" id="l-checked">checked today</div></div>
+    <div class="stat warn"><div class="n" id="s-asked">0</div><div class="l" id="l-asked">asked today</div></div>
+    <div class="stat deny"><div class="n" id="s-blocked">0</div><div class="l" id="l-blocked">blocked today</div></div>
   </div>
   <div class="card">
     <div class="chart-head">
@@ -449,29 +449,35 @@ li.runrow:hover { color: var(--text); }
   // ---- overview ----
   function renderVerdict() {
     if (!boot) return;
-    // In Live, derive the tiles from the same (capped) events array the chart
-    // uses, so tiles and chart can never disagree once the 5000-event cap bites.
+    // In Live, tiles count the WHOLE session from the same events array the
+    // chart uses (not just today), so they agree with the chart and can't drift
+    // apart across midnight or once the 5000-event cap bites. Labels drop
+    // "today" to match. Numeric ranges keep the server "today" totals + labels.
     if (range === 'live') {
       totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
-      events.forEach(function (ev) { if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1; });
+      events.forEach(function (ev) { totals[bucket(ev.outcome)] += 1; });
+      el('l-checked').textContent = 'checked'; el('l-asked').textContent = 'asked'; el('l-blocked').textContent = 'blocked';
+    } else {
+      el('l-checked').textContent = 'checked today'; el('l-asked').textContent = 'asked today'; el('l-blocked').textContent = 'blocked today';
     }
     var banner = el('verdict');
     var unhealthy = boot.projects.filter(function (p) { return !p.missing && !p.healthy; });
     var liveCount = boot.projects.filter(function (p) { return !p.missing; }).length;
+    var when = (range === 'live') ? '' : ' today';
     var state, headline, sub;
     if (totals.denied > 0 || unhealthy.length > 0) {
       state = 'bad'; headline = '✕ Attention';
       sub = unhealthy.length > 0
         ? unhealthy[0].name + ' protection is broken — run crasp status there' +
-          (totals.denied > 0 ? ' · ' + totals.denied + ' blocked today' : '')
-        : totals.denied + ' operation' + (totals.denied === 1 ? '' : 's') + ' blocked today — review Activity';
+          (totals.denied > 0 ? ' · ' + totals.denied + ' blocked' + when : '')
+        : totals.denied + ' operation' + (totals.denied === 1 ? '' : 's') + ' blocked' + when + ' — review Activity';
     } else if (totals.ask > 0 || totals.advisory > 0) {
       state = 'warn'; headline = '⚠ Needs a look';
-      sub = totals.ask + ' asked · ' + totals.advisory + ' noted today — nothing was blocked';
+      sub = totals.ask + ' asked · ' + totals.advisory + ' noted' + when + ' — nothing was blocked';
     } else {
       state = 'ok'; headline = '✓ All clear';
       sub = liveCount + ' of ' + liveCount + ' project' + (liveCount === 1 ? '' : 's') + ' protected · ' +
-        (totals.clean + totals.advisory + totals.ask + totals.denied) + ' checks today · nothing blocked';
+        (totals.clean + totals.advisory + totals.ask + totals.denied) + ' checks' + when + ' · nothing blocked';
     }
     banner.className = 'banner ' + state;
     el('verdict-headline').textContent = headline;
@@ -809,6 +815,7 @@ li.runrow:hover { color: var(--text); }
         bumpProject(b, ev);
       });
       merged.sort(function (a, c) { return Date.parse(c.ts) - Date.parse(a.ts); }); // newest first, by instant
+      if (merged.length > 5000) merged = merged.slice(0, 5000); // re-cap after the buffer merge
       events = merged;
       inflight = false;
       buffer = [];
