@@ -145,6 +145,10 @@ describe("crasp panel", () => {
     expect(b.events[0].projectPath).toBe(project); // stable identity for dedup/collision-safety
     expect(b.aggregates.today).toEqual({ clean: 1, advisory: 0, ask: 1, denied: 1 });
     expect(b.aggregates.topRules.map((r) => r.ruleId).sort()).toEqual(["bash-sudo", "token-leakage"]);
+    // Window alignment: every event in the feed lands in a chart bucket, so the
+    // feed count and the chart's daily-bucket sum agree (no partial extra day).
+    const dailySum = b.aggregates.daily.reduce((n, d) => n + d.clean + d.advisory + d.ask + d.denied, 0);
+    expect(dailySum).toBe(b.events.length);
   });
 
   it("since filters events and aggregates numerically, but not lastEventTs", async () => {

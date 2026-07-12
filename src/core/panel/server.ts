@@ -103,8 +103,12 @@ async function buildBootstrap(
   days: number,
   sinceMs: number | null
 ): Promise<PanelBootstrap> {
+  // Align the read window to the START of the oldest calendar day the chart
+  // shows (today .. today-(days-1)), so the feed/rule/project counts cover
+  // exactly the same span as the daily buckets — no partial extra day.
   const windowStart = new Date();
-  windowStart.setDate(windowStart.getDate() - days);
+  windowStart.setHours(0, 0, 0, 0);
+  windowStart.setDate(windowStart.getDate() - (days - 1));
 
   const all: TaggedEvent[] = [];
   const [projects, rules] = await Promise.all([

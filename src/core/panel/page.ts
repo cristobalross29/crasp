@@ -449,6 +449,12 @@ li.runrow:hover { color: var(--text); }
   // ---- overview ----
   function renderVerdict() {
     if (!boot) return;
+    // In Live, derive the tiles from the same (capped) events array the chart
+    // uses, so tiles and chart can never disagree once the 5000-event cap bites.
+    if (range === 'live') {
+      totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
+      events.forEach(function (ev) { if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1; });
+    }
     var banner = el('verdict');
     var unhealthy = boot.projects.filter(function (p) { return !p.missing && !p.healthy; });
     var liveCount = boot.projects.filter(function (p) { return !p.missing; }).length;
@@ -757,7 +763,9 @@ li.runrow:hover { color: var(--text); }
   function applyLiveEvent(ev) {
     events.unshift(ev);
     if (events.length > 5000) events.pop();
-    if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
+    // Non-live tiles accumulate off server aggregates; Live tiles are recomputed
+    // from events in renderVerdict, so don't double-count them here.
+    if (range !== 'live' && ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
     // In live the chart is derived from the events array; elsewhere bump the
     // server's daily buckets. Either way keep project last-seen fresh.
     if (boot) { if (range !== 'live') bumpDaily(boot, ev); bumpProject(boot, ev); }
@@ -772,8 +780,9 @@ li.runrow:hover { color: var(--text); }
     var isLive = range === 'live';
     // Live is just a windowed load with an in-memory since cutoff: the server
     // filters BOTH events and aggregates to >= liveSince, so tiles/feed/chart
-    // zero automatically and count forward. No special client zeroing needed.
-    var q = '/api/bootstrap?days=' + (isLive ? '30' : range);
+    // zero automatically and count forward. Read the widest window (90d) in Live
+    // so a long-running session's earlier events survive a reconnect refetch.
+    var q = '/api/bootstrap?days=' + (isLive ? '90' : range);
     var cutoff = activeCutoff();
     if (cutoff) q += '&since=' + encodeURIComponent(cutoff);
     fetch(q).then(function (r) { return r.json(); }).then(function (b) {
