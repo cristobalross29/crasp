@@ -7,6 +7,47 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.3] - 2026-07-12
+
+### Changed
+- **`crasp panel` redesigned into a four-tab dashboard.** Overview (a
+  verdict banner — All clear / Needs a look / Attention — plus today's
+  checked/asked/blocked tiles and an activity chart), Activity (a flagged-first
+  feed that collapses routine clean runs and writes each event as a plain
+  sentence), Rules (every rule that fired, with a plain-language name and a
+  one-line explanation), and Projects (per-project health cards, including
+  folders that went missing, and a copyable setup command).
+- **Overview chart is now interactive and range-driven.** A range dropdown
+  (Live · 10 · 15 · 30 · 45 · 60 · 90 days) sets the window; the chart spans the
+  chosen range with a colour legend, per-day hover tooltips (date + full
+  clean/advisory/asked/blocked/total breakdown), and date-axis labels.
+- **Live is a "from now" view.** Selecting Live zeroes the tiles/feed/chart and
+  counts only events after that moment (a Restart button re-zeroes); switching
+  back to a day range shows the true window, including everything logged while
+  Live was active.
+
+### Added
+- **Per-rule `caseSensitive` flag** in policy rules — set it when the casing is
+  the signal (e.g. the JS `Function()` constructor vs. a lowercase `function`
+  declaration).
+- **Project registry `~/.crasp/projects.json`** feeds the panel: `crasp setup`
+  and a healthy `crasp status` register the project so the panel aggregates all
+  of them; `/api/bootstrap` gained a `since` filter and merged built-in + user
+  rule metadata.
+
+### Fixed
+- **`code-execution` rule no longer flags ordinary JavaScript.** It was compiled
+  case-insensitively, so `Function\s*\(` matched every lowercase `function (`
+  and denied edits to normal source. The rule is now case-sensitive and matches
+  real dynamic-execution primitives (`new`/bare `Function(...)`, `eval` incl.
+  `(0,eval)()`, `child_process.*` incl. `*Sync`, `os.system`, string
+  `setTimeout`/`setInterval`, case-tolerant PowerShell `-EncodedCommand`,
+  `curl … | sh`) without matching ordinary code.
+- Panel bootstrap read window is aligned to the oldest chart day, so the feed
+  and the chart cover exactly the same span.
+- `crasp watch` (removed in 0.2.2) fully retired; the panel is the single
+  activity view.
+
 ## [0.2.2] - 2026-07-10
 
 ### Added
