@@ -64,6 +64,10 @@ describe("crasp panel", () => {
         "    description: My custom thing",
         "    severity: high",
         "    pattern: forbidden-token",
+        "  - id: prompt-injection", // collides with a built-in id — built-in must win
+        "    description: SHOULD NOT WIN",
+        "    severity: low",
+        "    pattern: whatever",
       ].join("\n") + "\n"
     );
     // Explicit timestamps: one event 5 days back (in the 30d window but before a
@@ -166,6 +170,9 @@ describe("crasp panel", () => {
     expect(pi).toBeDefined();
     expect(pi!.severity).toBe("high");
     expect(pi!.description.length).toBeGreaterThan(0);
+    // the project's colliding user rule must NOT override the built-in
+    expect(pi!.description).not.toBe("SHOULD NOT WIN");
+    expect(b.rules.filter((r) => r.id === "prompt-injection")).toHaveLength(1);
     const custom = b.rules.find((r) => r.id === "my-custom-rule");
     expect(custom).toBeDefined();
     expect(custom!.description).toBe("My custom thing");

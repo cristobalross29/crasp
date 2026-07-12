@@ -271,12 +271,12 @@ li.runrow:hover { color: var(--text); }
     }
     return null;
   }
+  function has(obj, k) { return Object.prototype.hasOwnProperty.call(obj, k); }
   function ruleInfo(id) {
-    if (RULE_INFO[id]) return RULE_INFO[id];
+    if (has(RULE_INFO, id)) return RULE_INFO[id];
     var p = providerRuleInfo(id);
     if (p) return p;
-    var sr = serverRules[id];
-    if (sr) return [id, sr.description];
+    if (has(serverRules, id)) return [id, serverRules[id].description];
     return [id, ''];
   }
 
@@ -294,8 +294,18 @@ li.runrow:hover { color: var(--text); }
     return 'clean';
   }
   function isFlagged(ev) { return bucket(ev.outcome) !== 'clean'; }
+  // Include every semantic field (and project + phase + tier) so two projects'
+  // same-millisecond events, or a pre/post pair, never collide into one key.
   function eventKey(ev) {
-    return (ev.ts || '') + '|' + (ev.tool || '') + '|' + (ev.filePath || '') + '|' + (ev.outcome || '') + '|' + (ev.ruleId || '');
+    return [ev.ts, ev.project, ev.tool, ev.filePath, ev.outcome, ev.ruleId, ev.phase, ev.tier]
+      .map(function (v) { return v == null ? '' : String(v); }).join('|');
+  }
+  function localDateKey(ts) {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    var m = String(d.getMonth() + 1); if (m.length < 2) m = '0' + m;
+    var day = String(d.getDate()); if (day.length < 2) day = '0' + day;
+    return d.getFullYear() + '-' + m + '-' + day;
   }
   function hhmm(ts) {
     var d = new Date(ts);
@@ -356,11 +366,16 @@ li.runrow:hover { color: var(--text); }
   var filter = 'all';
   var events = [];            // newest first
   var boot = null;            // last bootstrap
-  var serverRules = {};       // id -> {description, severity}
-  var seen = {};              // eventKey -> true, for SSE/bootstrap dedup
-  var expandedRuns = {};      // runKey -> true, preserved across re-renders
+  // Null-prototype maps so a rule id like "__proto__"/"toString" can't corrupt
+  // lookups or vanish from Object.keys.
+  var serverRules = Object.create(null); // id -> {description, severity}
+  var seen = Object.create(null);        // eventKey -> true, SSE/bootstrap dedup
+  var expandedRuns = Object.create(null);// runKey -> true, kept across re-renders
   var totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
   var FRESH_KEY = 'crasp-panel-since';
+  var loadGen = 0;            // only the newest bootstrap response may apply
+  var inflight = false;       // a bootstrap fetch is in progress
+  var buffer = [];            // SSE events that arrived during an in-flight load
 
   function freshTs() { try { return localStorage.getItem(FRESH_KEY); } catch (e) { return null; } }
 
@@ -509,7 +524,7 @@ li.runrow:hover { color: var(--text); }
       // Key a run by its OLDEST event so a prepended live clean event extends
       // the same run without losing its expanded state on re-render.
       var oldest = run[run.length - 1];
-      var key = oldest.ts + '|' + oldest.project;
+      var key = oldest.ts + '|' + oldest.project + '|' + oldest.tool + '|' + (oldest.filePath == null ? '' : oldest.filePath);
       if (run.length < 3 || expandedRuns[key]) {
         run.forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
       } else {
@@ -523,7 +538,7 @@ li.runrow:hover { color: var(--text); }
     if (!boot) return;
     var list = el('rules-list');
     list.textContent = '';
-    var counts = {};
+    var counts = Object.create(null);
     events.forEach(function (ev) { if (ev.ruleId) counts[ev.ruleId] = (counts[ev.ruleId] || 0) + 1; });
     var ids = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1); });
     el('rules-empty').hidden = ids.length > 0;
@@ -559,7 +574,7 @@ li.runrow:hover { color: var(--text); }
     if (!boot) return;
     var wrap = el('pcards');
     wrap.textContent = '';
-    var counts = {};
+    var counts = Object.create(null);
     events.forEach(function (ev) { counts[ev.project] = (counts[ev.project] || 0) + 1; });
     boot.projects.forEach(function (p) {
       var card = document.createElement('div');
@@ -603,23 +618,69 @@ li.runrow:hover { color: var(--text); }
     renderFeed(); renderRules(); renderProjects();
   }
 
+  // ---- live event application (keeps aggregates + projects consistent) ----
+  function bumpDaily(b, ev) {
+    var key = localDateKey(ev.ts);
+    if (!key) return;
+    for (var i = 0; i < b.aggregates.daily.length; i++) {
+      if (b.aggregates.daily[i].date === key) { b.aggregates.daily[i][bucket(ev.outcome)] += 1; return; }
+    }
+  }
+  function bumpProject(b, ev) {
+    for (var i = 0; i < b.projects.length; i++) {
+      var p = b.projects[i];
+      if (!p.missing && p.name === ev.project) {
+        if (!p.lastEventTs || Date.parse(ev.ts) > Date.parse(p.lastEventTs)) p.lastEventTs = ev.ts;
+        return;
+      }
+    }
+  }
+  function applyLiveEvent(ev) {
+    events.unshift(ev);
+    if (events.length > 5000) events.pop();
+    if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
+    if (boot) { bumpDaily(boot, ev); bumpProject(boot, ev); }
+    renderAll(); // includes spark + projects so no view goes stale
+  }
+
   // ---- data ----
   function loadAll() {
+    var myGen = ++loadGen;
+    inflight = true;
+    buffer = [];
     var q = '/api/bootstrap?days=' + (range === '90' ? '90' : '30');
     var ts = freshTs();
     if (ts) q += '&since=' + encodeURIComponent(ts);
     fetch(q).then(function (r) { return r.json(); }).then(function (b) {
+      if (myGen !== loadGen) return; // a newer load superseded this one; it owns state
       boot = b;
-      serverRules = {};
+      serverRules = Object.create(null);
       (b.rules || []).forEach(function (r) { serverRules[r.id] = r; });
-      seen = {};
-      expandedRuns = {};
-      events = range === 'live' ? [] : b.events.slice();
-      events.forEach(function (ev) { seen[eventKey(ev)] = true; });
+      seen = Object.create(null);
+      expandedRuns = Object.create(null);
+      var merged = range === 'live' ? [] : b.events.slice();
+      merged.forEach(function (ev) { seen[eventKey(ev)] = true; });
       totals = { clean: b.aggregates.today.clean, advisory: b.aggregates.today.advisory,
                  ask: b.aggregates.today.ask, denied: b.aggregates.today.denied };
+      // Merge any SSE events that arrived while this bootstrap was in flight, so
+      // the race between reading the log and the tailer starting can't drop them.
+      var cutoff = freshTs();
+      buffer.forEach(function (ev) {
+        if (cutoff && ev.ts && Date.parse(ev.ts) < Date.parse(cutoff)) return;
+        var k = eventKey(ev);
+        if (seen[k]) return;
+        seen[k] = true;
+        merged.push(ev);
+        if (ev.ts && isToday(ev.ts)) totals[bucket(ev.outcome)] += 1;
+        bumpDaily(b, ev); bumpProject(b, ev);
+      });
+      merged.sort(function (a, c) { return Date.parse(c.ts) - Date.parse(a.ts); }); // newest first, by instant
+      events = merged;
+      inflight = false;
+      buffer = [];
       renderAll();
     }).catch(function () {
+      if (myGen === loadGen) inflight = false;
       el('live-dot').classList.remove('live');
     });
   }
@@ -659,13 +720,11 @@ li.runrow:hover { color: var(--text); }
     try { ev = JSON.parse(m.data); } catch (e) { return; }
     var ts = freshTs();
     if (ts && ev.ts && Date.parse(ev.ts) < Date.parse(ts)) return;   // before the "start fresh" cutoff
+    if (inflight) { buffer.push(ev); return; }  // merged when the in-flight bootstrap resolves
     var key = eventKey(ev);
     if (seen[key]) return;                    // already delivered by bootstrap or an earlier frame
     seen[key] = true;
-    events.unshift(ev);
-    if (events.length > 5000) events.pop();
-    if (ev.ts && isToday(ev.ts)) { totals[bucket(ev.outcome)] += 1; }
-    renderVerdict(); renderLatest(); renderFeed(); renderRules();
+    applyLiveEvent(ev);
   };
 
   route();

@@ -16,7 +16,7 @@ const HEARTBEAT_MS = 15_000;
 // Registry entries whose folder is genuinely gone (vs. a transient/permission
 // error) are shown as "missing"; anything else is treated as a live project so
 // a flaky stat doesn't misreport a healthy project as deleted.
-function isNotFound(err: unknown): boolean {
+export function isNotFound(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException)?.code;
   return code === "ENOENT" || code === "ENOTDIR";
 }
@@ -24,7 +24,7 @@ function isNotFound(err: unknown): boolean {
 // Timestamps are compared as epoch ms, never lexically: a hook-log ts is only
 // typed as string and could carry an offset that sorts differently from its
 // actual instant.
-function parseSince(raw: string | null): number | null {
+export function parseSince(raw: string | null): number | null {
   if (!raw) return null;
   const t = Date.parse(raw);
   return Number.isNaN(t) ? null : t;
@@ -115,8 +115,15 @@ async function buildBootstrap(
           getProjectHealth(dir),
         ]);
         // lastEventTs reflects the whole window, BEFORE the since-filter, so a
-        // project's "last seen" stays truthful when the user starts fresh.
-        const lastEventTs = entries.length > 0 ? entries[entries.length - 1].ts : null;
+        // project's "last seen" stays truthful when the user starts fresh. Pick
+        // it by instant (Date.parse), not lexically, so an offset-form ISO can't
+        // masquerade as the latest.
+        let lastEventTs: string | null = null;
+        let lastMs = -Infinity;
+        for (const entry of entries) {
+          const ms = Date.parse(entry.ts);
+          if (ms >= lastMs) { lastMs = ms; lastEventTs = entry.ts; }
+        }
         for (const entry of entries) {
           if (sinceMs === null || Date.parse(entry.ts) >= sinceMs) {
             all.push({ ...entry, project: name });
@@ -139,7 +146,7 @@ async function buildBootstrap(
     });
   }
 
-  all.sort((a, b) => b.ts.localeCompare(a.ts)); // newest first (canonical ISO in the log)
+  all.sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)); // newest first, by instant
   return {
     projects,
     events: all.slice(0, EVENTS_CAP),
