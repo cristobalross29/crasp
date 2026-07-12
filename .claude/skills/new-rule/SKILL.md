@@ -52,7 +52,7 @@ The user types `/new-rule` optionally followed by a description, e.g.:
 3. **Write the regex** — Reuse the pattern guidance from `/new-policy`:
    - Alternation for synonyms: `curl|wget|fetch`
    - Word boundaries to avoid substring hits: `\\bnpm\\b`
-   - Builtin patterns are strings compiled with `new RegExp(pattern, "i")` — case-insensitive already, no `(?i)`.
+   - Builtin patterns are strings compiled case-insensitively by default (no `(?i)` needed). Set `caseSensitive: true` on a rule when the casing itself is the signal (e.g. the JS `Function(` constructor vs. a lowercase `function (` declaration); then write any case-tolerant tokens as explicit character classes.
    - Prefer specific over broad. A false positive in a security tool erodes trust and trains users to ignore it.
 
 4. **Add the paired test** — In the matching test file, add at least: one input that **must match** and one near-miss that **must NOT match** (the false-positive guard). For `sensitive-path`, assert both the read tier and the write tier.

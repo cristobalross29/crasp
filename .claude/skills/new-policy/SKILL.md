@@ -26,7 +26,7 @@ The user types `/new-policy` optionally followed by a description, e.g.:
    Pattern guidance:
    - Use alternation for synonyms: `"jailbreak|DAN mode|ignore previous instructions"`
    - Anchor on word boundaries when needed: `"\\bexploit\\b"`
-   - The engine uses `new RegExp(pattern, "i")` — case-insensitive by default, no need to add `(?i)`.
+   - The engine compiles patterns case-insensitively by default, so no `(?i)` is needed. Add `caseSensitive: true` to a rule when exact casing matters.
 
 3. **Write the YAML file** — Use this structure:
 

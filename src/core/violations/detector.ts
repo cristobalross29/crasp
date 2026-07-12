@@ -12,7 +12,7 @@ export function detectViolations(
   const violations: Violation[] = [];
 
   for (const rule of policy.rules) {
-    const pattern = new RegExp(rule.pattern, "i");
+    const pattern = new RegExp(rule.pattern, rule.caseSensitive ? "" : "i");
     const target = rule.target ?? "assistant";
 
     steps.forEach((step, stepIndex) => {

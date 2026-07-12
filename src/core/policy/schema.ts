@@ -7,7 +7,8 @@ export const policyRuleSchema = z.object({
   severity: severitySchema.default("medium"),
   pattern: z.string().min(1),
   target: targetRoleSchema.default("assistant"),
-  message: z.string().optional()
+  message: z.string().optional(),
+  caseSensitive: z.boolean().optional()
 });
 
 export const policyExceptionSchema = z

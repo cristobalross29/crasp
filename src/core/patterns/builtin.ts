@@ -46,8 +46,18 @@ export const BUILTIN_POLICY: Policy = {
       description: "Detects unsafe code execution primitives.",
       severity: "high",
       target: "any",
+      // caseSensitive so "Function(" (the JS constructor) is caught while a
+      // lowercase "function (" declaration is not — impossible to separate
+      // under a case-insensitive compile. Negative lookbehinds keep property
+      // access ("obj.eval(", "regex.exec(") and longer identifiers
+      // ("child_process.executor", "resetTimeout") from matching; the
+      // global-object branch still catches "globalThis.eval". PowerShell stays
+      // case-tolerant via explicit character classes. Known regex-only gaps
+      // (documented, not caught): bracket/computed member access like
+      // child_process["exec"], and aliased/destructured child_process imports.
+      caseSensitive: true,
       pattern:
-        "child_process\\.(?:exec|execFile|spawn|fork)|(?:exec|spawn)\\s*\\(|subprocess\\.(?:Popen|run|call)\\s*\\(|os\\.system\\s*\\(|eval\\s*\\(|Function\\s*\\(|powershell\\s+-(?:enc|encodedcommand)|curl\\s+(?:-[a-zA-Z]*\\s+)?https?://[^\\n|]+\\|\\s*(?:sh|bash)",
+        "child_process\\.(?:exec|execFile|execSync|spawn|spawnSync|fork)\\s*\\(|subprocess\\.(?:Popen|run|call)\\s*\\(|os\\.system\\s*\\(|(?<![.\\w])eval\\s*(?:\\?\\.\\s*)?\\(|(?<![.\\w])(?:globalThis|window|self|top|parent|global)\\.eval\\s*(?:\\?\\.\\s*)?\\(|\\(\\s*0\\s*,\\s*eval\\s*\\)\\s*\\(|(?<![.\\w])Function\\s*(?:\\?\\.\\s*)?\\(|(?<![.\\w])set(?:Timeout|Interval)\\s*\\(\\s*['\"\\x60]|[Pp][Oo][Ww][Ee][Rr][Ss][Hh][Ee][Ll][Ll]\\s+-[Ee][Nn][Cc](?:[Oo][Dd][Ee][Dd][Cc][Oo][Mm][Mm][Aa][Nn][Dd])?|curl\\s+(?:-[a-zA-Z]*\\s+)?https?://[^\\n|]+\\|\\s*(?:sh|bash)",
       message: "Unsafe code execution behavior detected."
     },
     {

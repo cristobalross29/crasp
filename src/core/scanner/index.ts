@@ -95,7 +95,7 @@ export function scanContent(
   const matches: FileScanMatch[] = [];
 
   for (const rule of policy.rules) {
-    const pattern = new RegExp(rule.pattern, "gi");
+    const pattern = new RegExp(rule.pattern, rule.caseSensitive ? "g" : "gi");
     let match: RegExpExecArray | null;
 
     while ((match = pattern.exec(content)) !== null) {

@@ -33,6 +33,12 @@ export interface PolicyRule {
   pattern: string;
   target?: TargetRole;
   message?: string;
+  /**
+   * Match `pattern` case-sensitively. Patterns are compiled case-insensitively
+   * by default; set this when the casing itself is meaningful (e.g. the JS
+   * `Function` constructor vs. a lowercase `function` declaration).
+   */
+  caseSensitive?: boolean;
 }
 
 export type ExceptionOp = "read" | "write" | "edit" | "bash" | "any";
