@@ -55,7 +55,7 @@
   "bugs": {
     "url": "https://github.com/cristobalross29/crasp/issues"
   },
-  "homepage": "https://github.com/cristobalross29/crasp#readme",
+  "homepage": "https://cristobalross29.com/crasp",
   "license": "MIT",
   "packageManager": "pnpm@9.15.9"
 }
