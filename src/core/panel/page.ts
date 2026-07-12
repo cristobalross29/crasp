@@ -1,6 +1,8 @@
 // The published bundle is a single file — the page ships as a string, never
-// as an asset. String.raw + no backticks/dollar-brace keeps the inline JS
-// literal-safe inside this template.
+// as an asset. A raw template literal with no backticks or dollar-brace inside
+// keeps the inline JS literal-safe. All user-influenced values reach the DOM
+// only via textContent (the text() helper) or safe property writes, never via
+// any HTML-parsing sink, so logged content can never inject markup.
 export const PANEL_PAGE: string = String.raw`<!doctype html>
 <html lang="en">
 <head>
@@ -9,117 +11,148 @@ export const PANEL_PAGE: string = String.raw`<!doctype html>
 <title>crasp panel</title>
 <style>
 :root {
-  --bg: #f6f7f9; --surface: #ffffff; --border: #e3e6ea;
-  --text: #1a2129; --muted: #6b7684;
-  --ok: #1a9e5c; --adv: #2f6fdb; --warn: #c77d0a; --deny: #d43c3c;
-  --ok-soft: #e2f5ea; --adv-soft: #e7eefc; --warn-soft: #fbf0dc; --deny-soft: #fbe5e5;
-  --accent: #1a9e5c;
+  --bg: #f4f6f8; --surface: #ffffff; --border: #dfe4e9;
+  --text: #17202a; --muted: #5a6675;
+  --ok: #178f53; --adv: #2a63c9; --warn: #b26f05; --deny: #cc3434;
+  --ok-soft: #ddf3e7; --adv-soft: #e3ecfb; --warn-soft: #faeed6; --deny-soft: #fadddd;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1116; --surface: #161b22; --border: #262d36;
-    --text: #e6ebf1; --muted: #8b96a3;
-    --ok: #3fce85; --adv: #6ba1f2; --warn: #e8a33d; --deny: #f0716b;
-    --ok-soft: #12301f; --adv-soft: #14233c; --warn-soft: #35270e; --deny-soft: #3a1717;
-    --accent: #3fce85;
+    --bg: #0e1116; --surface: #161b22; --border: #2a323d;
+    --text: #edf2f7; --muted: #9aa7b4;
+    --ok: #43d48b; --adv: #79aaf5; --warn: #edb04d; --deny: #f37f79;
+    --ok-soft: #143423; --adv-soft: #172740; --warn-soft: #3a2b10; --deny-soft: #401b1b;
   }
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { color-scheme: light dark; }
 body {
   background: var(--bg); color: var(--text);
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  padding: 0 20px 48px;
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  padding: 0 20px 56px;
 }
 header {
-  max-width: 1100px; margin: 0 auto; padding: 22px 0 18px;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  max-width: 880px; margin: 0 auto; padding: 20px 0 14px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 21px; letter-spacing: -0.02em; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: background .3s; flex: none; }
 .dot.live { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
-.totals { display: flex; gap: 8px; flex-wrap: wrap; }
-.pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
-  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+.tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.tabs a {
+  text-decoration: none; color: var(--muted); font-weight: 600; font-size: 15px;
+  padding: 7px 14px; border-radius: 8px;
 }
-.pill b { font-variant-numeric: tabular-nums; }
-.pill.ok b { color: var(--ok); } .pill.adv b { color: var(--adv); }
-.pill.warn b { color: var(--warn); } .pill.deny b { color: var(--deny); }
+.tabs a.on { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
 .range { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--surface); }
 .range button {
-  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px;
-  font-weight: 600; padding: 3px 12px; border-radius: 999px; cursor: pointer;
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+  font-weight: 600; padding: 4px 13px; border-radius: 999px; cursor: pointer;
 }
-.range button.on { background: var(--accent); color: var(--surface); }
-main { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
-.grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
-@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.range button.on { background: var(--ok); color: var(--surface); }
+main { max-width: 880px; margin: 0 auto; }
+section[data-tab] { display: none; }
+section[data-tab].on { display: block; }
 .card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 18px 20px;
+  border-radius: 14px; padding: 22px 24px; margin-bottom: 16px;
 }
-.card h2 {
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+h2 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
   color: var(--muted); margin-bottom: 14px;
 }
-ul { list-style: none; }
-#projects li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
-#projects li:first-child { border-top: 0; }
-.health { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.health.ok { background: var(--ok); } .health.bad { background: var(--deny); }
-.pname { font-weight: 600; }
-.plast { margin-left: auto; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.pproblems { color: var(--deny); font-size: 12.5px; }
+.banner { border-radius: 14px; padding: 26px 28px; margin-bottom: 16px; border: 1px solid var(--border); }
+.banner.ok { background: var(--ok-soft); border-color: var(--ok); }
+.banner.warn { background: var(--warn-soft); border-color: var(--warn); }
+.banner.bad { background: var(--deny-soft); border-color: var(--deny); }
+.banner .headline { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+.banner.ok .headline { color: var(--ok); }
+.banner.warn .headline { color: var(--warn); }
+.banner.bad .headline { color: var(--deny); }
+.banner .sub { color: var(--text); margin-top: 6px; font-size: 15.5px; }
+.stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; margin-bottom: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; }
+.stat .n { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat .l { color: var(--muted); font-size: 13.5px; font-weight: 600; }
+.stat.warn .n { color: var(--warn); } .stat.deny .n { color: var(--deny); } .stat.ok .n { color: var(--ok); }
 svg { width: 100%; height: auto; display: block; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-td { padding: 6px 0; border-top: 1px solid var(--border); }
-tr:first-child td { border-top: 0; }
-td.num { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
-td.rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-.bar-cell { width: 40%; padding-left: 12px; }
-.bar { height: 6px; border-radius: 3px; background: var(--accent); opacity: .75; }
+.latest { color: var(--muted); font-size: 14.5px; }
+.latest b { color: var(--text); }
+.fresh-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+.fresh-box button {
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  color: var(--text); background: transparent; border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px;
+}
+.fresh-box a { color: var(--adv); cursor: pointer; }
+.chips { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.chips button {
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  color: var(--muted); background: transparent; border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 14px;
+}
+.chips button.on { color: var(--surface); background: var(--text); border-color: var(--text); }
+ul { list-style: none; }
 #feed li {
-  display: flex; align-items: baseline; gap: 10px; padding: 8px 0;
-  border-top: 1px solid var(--border); font-size: 14px;
+  display: flex; align-items: baseline; gap: 12px; padding: 11px 0; font-size: 15px;
+  border-top: 1px solid var(--border);
 }
 #feed li:first-child { border-top: 0; }
-#feed li.fresh { animation: slidein .35s ease; }
+#feed li.fresh-row { animation: slidein .35s ease; }
 @keyframes slidein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; flex: none; width: 62px; }
-.proj { color: var(--muted); font-size: 12.5px; flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool { font-weight: 600; flex: none; width: 74px; }
-.target {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
-}
+.time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; flex: none; width: 60px; }
+.proj { color: var(--muted); font-size: 13px; flex: none; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sentence { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge {
-  flex: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  padding: 2px 8px; border-radius: 999px;
+  flex: none; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 3px 10px; border-radius: 999px;
 }
 .badge.ok { color: var(--ok); background: var(--ok-soft); }
 .badge.adv { color: var(--adv); background: var(--adv-soft); }
 .badge.warn { color: var(--warn); background: var(--warn-soft); }
 .badge.deny { color: var(--deny); background: var(--deny-soft); }
-.rid { color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex: none; }
-.empty { text-align: center; padding: 36px 16px; color: var(--muted); }
-.empty .big { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.empty code {
+.rname { color: var(--muted); font-size: 12.5px; flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li.runrow { color: var(--muted); font-size: 14px; cursor: pointer; }
+li.runrow:hover { color: var(--text); }
+.rule-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-top: 1px solid var(--border); }
+.rule-row:first-child { border-top: 0; }
+.rule-main { flex: 1; min-width: 0; }
+.rule-name { font-weight: 700; font-size: 15.5px; }
+.rule-name .rid { font-weight: 400; color: var(--muted); font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-left: 8px; }
+.rule-desc { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.rule-count { flex: none; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; width: 56px; text-align: right; }
+.rule-bar { flex: none; width: 26%; }
+.rule-bar > div { height: 8px; border-radius: 4px; }
+.sev-critical { background: var(--deny); } .sev-high { background: var(--warn); }
+.sev-medium { background: var(--adv); } .sev-low { background: var(--ok); }
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 14px; }
+.pcard { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.pcard.gone { opacity: .55; }
+.pcard .prow { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16.5px; }
+.health { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.health.ok { background: var(--ok); } .health.bad { background: var(--deny); } .health.off { background: var(--muted); }
+.ppath { color: var(--muted); font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmeta { color: var(--muted); font-size: 13.5px; margin-top: 10px; }
+.pproblem { color: var(--deny); font-size: 13px; margin-top: 6px; }
+.pcopy {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px;
+  margin-top: 8px; cursor: pointer; display: inline-block;
 }
+.empty { text-align: center; padding: 40px 16px; color: var(--muted); font-size: 15px; }
+.empty .big { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+@media (max-width: 640px) { .stat-row { grid-template-columns: minmax(0,1fr); } .tabs a { padding: 7px 10px; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><span id="live-dot" class="dot"></span>crasp</div>
-  <div class="totals">
-    <span class="pill ok">&#10003; <b id="t-clean">0</b> clean</span>
-    <span class="pill adv">&#9670; <b id="t-advisory">0</b> advisory</span>
-    <span class="pill warn">&#9888; <b id="t-ask">0</b> asked</span>
-    <span class="pill deny">&#10005; <b id="t-denied">0</b> denied</span>
-  </div>
+  <div class="brand"><span id="live-dot" class="dot"></span>crasp panel</div>
+  <nav class="tabs" id="tabs">
+    <a href="#/overview" data-nav="overview" class="on">Overview</a>
+    <a href="#/activity" data-nav="activity">Activity</a>
+    <a href="#/rules" data-nav="rules">Rules</a>
+    <a href="#/projects" data-nav="projects">Projects</a>
+  </nav>
   <nav class="range" id="range" aria-label="History range">
     <button data-range="30" class="on">30d</button>
     <button data-range="90">90d</button>
@@ -127,38 +160,125 @@ td.rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size
   </nav>
 </header>
 <main>
-  <section class="grid">
-    <div class="card">
-      <h2>Protection</h2>
-      <ul id="projects"></ul>
-      <div id="projects-empty" class="empty" hidden>
-        <div class="big">No projects registered yet</div>
-        <div>Run <code>npx @crasp/cli setup</code> in a project to protect it.</div>
-      </div>
+
+<section data-tab="overview" class="on">
+  <div class="banner ok" id="verdict">
+    <div class="headline" id="verdict-headline">Loading&hellip;</div>
+    <div class="sub" id="verdict-sub"></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat ok"><div class="n" id="s-checked">0</div><div class="l">checked today</div></div>
+    <div class="stat warn"><div class="n" id="s-asked">0</div><div class="l">asked today</div></div>
+    <div class="stat deny"><div class="n" id="s-blocked">0</div><div class="l">blocked today</div></div>
+  </div>
+  <div class="card">
+    <h2>Last 14 days</h2>
+    <svg id="spark" viewBox="0 0 560 90" preserveAspectRatio="none" aria-label="14-day activity"></svg>
+  </div>
+  <div class="card">
+    <div class="latest" id="latest">No events yet.</div>
+  </div>
+  <div class="card">
+    <div class="fresh-box" id="fresh-box">
+      <button id="start-fresh">Start fresh — count only from now</button>
+      <span id="fresh-state"></span>
     </div>
-    <div class="card">
-      <h2>Last 30 days</h2>
-      <svg id="chart" viewBox="0 0 600 150" preserveAspectRatio="none" aria-label="Daily event counts"></svg>
+  </div>
+</section>
+
+<section data-tab="activity">
+  <div class="card">
+    <div class="chips" id="chips">
+      <button data-filter="all" class="on">All</button>
+      <button data-filter="flagged">Flagged</button>
+      <button data-filter="blocked">Blocked</button>
     </div>
-  </section>
-  <section class="grid">
-    <div class="card"><h2>Top rules</h2><table id="rules"></table></div>
-    <div class="card"><h2>By project</h2><table id="by-project"></table></div>
-  </section>
-  <section class="card">
-    <h2>Live feed</h2>
     <div id="feed-empty" class="empty" hidden>
-      <div class="big">Waiting for your first event&hellip;</div>
-      <div>Use Claude Code in a protected project and checks will stream in here.</div>
+      <div class="big">Nothing here yet</div>
+      <div>Use Claude Code in a protected project and checks will stream in live.</div>
     </div>
     <ul id="feed"></ul>
-  </section>
+  </div>
+</section>
+
+<section data-tab="rules">
+  <div class="card">
+    <div id="rules-empty" class="empty" hidden>
+      <div class="big">Nothing has fired in this window</div>
+      <div>That is a good thing.</div>
+    </div>
+    <div id="rules-list"></div>
+  </div>
+</section>
+
+<section data-tab="projects">
+  <div class="pcards" id="pcards"></div>
+</section>
+
 </main>
 <script>
 (function () {
-  var MAX_FEED = 200;
+  var MAX_ROWS = 300;
   var BUCKET_CLASS = { clean: 'ok', advisory: 'adv', ask: 'warn', denied: 'deny' };
-  var totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
+
+  var RULE_INFO = {
+    'sensitive-env-file': ['Protected a .env file', 'Asked before Claude touched an environment/secrets file'],
+    'sensitive-key-file': ['Protected a private key', 'Asked before Claude touched a key or certificate file'],
+    'sensitive-cloud-credentials': ['Protected cloud credentials', 'Asked before Claude touched cloud credential files'],
+    'token-leakage': ['Caught a leaked token', 'Blocked content containing an API key or token'],
+    'credential-exfiltration': ['Stopped credential-theft text', 'Content matched instructions for stealing credentials'],
+    'prompt-injection': ['Caught prompt injection', 'Text tried to override the assistant instructions'],
+    'ssrf': ['Blocked metadata endpoint', 'Content referenced internal cloud metadata addresses'],
+    'path-traversal': ['Caught path traversal', 'Content reached outside the project directory'],
+    'code-execution': ['Flagged dynamic code execution', 'Content used eval-style code execution'],
+    'data-exfiltration': ['Stopped data-exfiltration text', 'Content matched instructions for exporting private data'],
+    'pii-exposure': ['Caught personal data', 'Content looked like SSNs, card or passport numbers'],
+    'jailbreak-attempt': ['Caught a jailbreak attempt', 'Text tried to disable safety behavior'],
+    'system-prompt-extraction': ['Blocked prompt extraction', 'Text asked to reveal hidden system instructions'],
+    'credential-theft': ['Stopped credential-theft text', 'A policy rule for credential theft matched'],
+    'bash-rm-rf': ['Asked before a destructive delete', 'An rm -rf style command needed your approval'],
+    'bash-sudo': ['Asked before sudo', 'A privileged command needed your approval'],
+    'bash-force-push': ['Asked before force-push', 'A git force-push needed your approval'],
+    'bash-pipe-to-shell': ['Asked before curl-to-shell', 'Piping a download into a shell needed your approval'],
+    'bash-outbound-fetch': ['Noticed an outbound fetch', 'A command sent a network request; data could leave your machine'],
+    'bash-secret-exfil': ['Asked before secret exfiltration', 'A command tried to send secrets somewhere'],
+    'bash-read-secret': ['Asked before reading secrets', 'A command read credential files'],
+    'bash-history-wipe': ['Asked before history wipe', 'A command tried to clear shell history'],
+    'bash-db-drop': ['Asked before dropping a database', 'A destructive database command needed approval'],
+    'bash-disk-write': ['Asked before raw disk write', 'A command wrote directly to a disk device'],
+    'bash-fork-bomb': ['Caught a fork bomb', 'A self-replicating shell pattern needed approval'],
+    'bash-chmod-777': ['Asked before chmod 777', 'A command made files world-writable'],
+    'bash-git-hard-reset': ['Asked before hard reset', 'A git hard reset would discard work'],
+    'bash-global-install': ['Asked before global install', 'A package was being installed machine-wide'],
+    'bash-publish': ['Asked before publishing', 'A publish/release command needed your approval'],
+    'inbound-instruction-override': ['Injection in content Claude read', 'A webpage/file tried to give Claude new instructions'],
+    'inbound-data-exfil-directive': ['Exfil directive in content', 'Content Claude read told it to send data somewhere'],
+    'inbound-embedded-command': ['Embedded command in content', 'Content Claude read contained a hidden command'],
+    'inbound-tool-injection': ['Tool-call injection in content', 'Content tried to trigger tool calls with secrets/URLs'],
+    'inbound-trigger-on-read': ['Trigger phrase in content', 'Content tried to activate on being read'],
+    'secret-generic-entropy': ['Possible unknown secret', 'A high-entropy string looked like a credential'],
+    'secret-jwt': ['JWT token found', 'A JSON Web Token appeared in content'],
+    'secret-pem': ['Private key found', 'A PEM/SSH private key appeared in content'],
+    'secret-db-conn': ['Database credentials found', 'A connection string with credentials appeared'],
+    'secret-url-creds': ['Credentials in a URL', 'A URL containing a password appeared'],
+    'crasp-builtin-security': ['Built-in security rule', 'One of the always-on rules matched']
+  };
+  function providerRuleInfo(id) {
+    if (id.indexOf('secret-') === 0) {
+      var provider = id.slice(7).replace(/-/g, ' ');
+      return [provider.charAt(0).toUpperCase() + provider.slice(1) + ' secret found',
+              'A ' + provider + ' credential appeared in content and was stopped'];
+    }
+    return null;
+  }
+  function ruleInfo(id) {
+    if (RULE_INFO[id]) return RULE_INFO[id];
+    var p = providerRuleInfo(id);
+    if (p) return p;
+    var sr = serverRules[id];
+    if (sr) return [id, sr.description];
+    return [id, ''];
+  }
 
   function el(id) { return document.getElementById(id); }
   function text(tag, cls, value) {
@@ -173,78 +293,142 @@ td.rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size
     if (outcome === 'advisory') return 'advisory';
     return 'clean';
   }
+  function isFlagged(ev) { return bucket(ev.outcome) !== 'clean'; }
+  function eventKey(ev) {
+    return (ev.ts || '') + '|' + (ev.tool || '') + '|' + (ev.filePath || '') + '|' + (ev.outcome || '') + '|' + (ev.ruleId || '');
+  }
+  function hhmm(ts) {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '--:--';
+    var h = String(d.getHours()); if (h.length < 2) h = '0' + h;
+    var m = String(d.getMinutes()); if (m.length < 2) m = '0' + m;
+    return h + ':' + m;
+  }
+  function isToday(ts) {
+    var d = new Date(ts), n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  }
+  function shortTarget(t) {
+    if (t == null) return '';
+    t = String(t);
+    if (t.indexOf('/') === -1) return t.length > 64 ? t.slice(0, 61) + '…' : t;
+    var parts = t.split('/').filter(Boolean);
+    if (parts.length <= 2) return t;
+    return '…/' + parts.slice(-2).join('/');
+  }
+  function scanLabel(tool) {
+    if (tool === 'Bash') return 'scanned a command output';
+    if (tool === 'WebFetch') return 'scanned a webpage Claude read';
+    if (tool === 'WebSearch') return 'scanned search results';
+    return 'scanned content Claude read';
+  }
+  function sentenceFor(ev) {
+    var b = bucket(ev.outcome);
+    var target = ev.filePath == null ? '' : String(ev.filePath);
+    var isResultPlaceholder = target.charAt(0) === '(' || target === '';
+    if (ev.phase === 'post') {
+      var what = isResultPlaceholder ? scanLabel(ev.tool) : 'scanned ' + shortTarget(target);
+      return b === 'clean' ? what + ' — clean' : what + ' — flagged as suspicious';
+    }
+    var head;
+    if (ev.tool === 'Bash') head = isResultPlaceholder ? 'ran a command' : 'ran: ' + shortTarget(target);
+    else if (ev.tool === 'Write') head = 'wrote to ' + shortTarget(target);
+    else if (ev.tool === 'Edit') head = 'edited ' + shortTarget(target);
+    else if (ev.tool === 'Read') head = 'read ' + shortTarget(target);
+    else head = 'used ' + ev.tool + ' on ' + shortTarget(target);
+    if (b === 'denied') return 'blocked — ' + head;
+    if (b === 'ask') return 'asked you first — ' + head;
+    if (b === 'advisory') return 'noted — ' + head;
+    if (ev.outcome === 'exception') return head + ' (pre-approved exception)';
+    return head;
+  }
   function badgeLabel(outcome) {
     if (outcome === 'denied') return 'blocked';
+    if (outcome === 'ask') return 'asked';
     if (outcome === 'inbound-flagged') return 'flagged';
-    return outcome;
+    if (outcome === 'advisory') return 'noted';
+    if (outcome === 'exception') return 'allowed';
+    return 'clean';
   }
-  function renderTotals() {
-    el('t-clean').textContent = totals.clean;
-    el('t-advisory').textContent = totals.advisory;
-    el('t-ask').textContent = totals.ask;
-    el('t-denied').textContent = totals.denied;
+
+  // ---- state ----
+  var range = '30';
+  var filter = 'all';
+  var events = [];            // newest first
+  var boot = null;            // last bootstrap
+  var serverRules = {};       // id -> {description, severity}
+  var seen = {};              // eventKey -> true, for SSE/bootstrap dedup
+  var expandedRuns = {};      // runKey -> true, preserved across re-renders
+  var totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
+  var FRESH_KEY = 'crasp-panel-since';
+
+  function freshTs() { try { return localStorage.getItem(FRESH_KEY); } catch (e) { return null; } }
+
+  // ---- router ----
+  function currentTab() {
+    var h = location.hash.replace('#/', '');
+    return (h === 'activity' || h === 'rules' || h === 'projects') ? h : 'overview';
   }
-  function feedRow(ev, fresh) {
-    var li = document.createElement('li');
-    if (fresh) li.className = 'fresh';
-    var d = new Date(ev.ts);
-    var hh = String(d.getHours()); if (hh.length < 2) hh = '0' + hh;
-    var mm = String(d.getMinutes()); if (mm.length < 2) mm = '0' + mm;
-    var ss = String(d.getSeconds()); if (ss.length < 2) ss = '0' + ss;
-    li.appendChild(text('span', 'time', hh + ':' + mm + ':' + ss));
-    li.appendChild(text('span', 'proj', ev.project));
-    li.appendChild(text('span', 'tool', ev.tool));
-    li.appendChild(text('span', 'target', ev.filePath));
-    if (ev.ruleId) li.appendChild(text('span', 'rid', ev.ruleId));
-    li.appendChild(text('span', 'badge ' + BUCKET_CLASS[bucket(ev.outcome)], badgeLabel(ev.outcome)));
-    return li;
+  function route() {
+    var tab = currentTab();
+    var secs = document.querySelectorAll('section[data-tab]');
+    for (var i = 0; i < secs.length; i++) secs[i].className = secs[i].getAttribute('data-tab') === tab ? 'on' : '';
+    var navs = document.querySelectorAll('#tabs a');
+    for (var j = 0; j < navs.length; j++) navs[j].className = navs[j].getAttribute('data-nav') === tab ? 'on' : '';
   }
-  function addLive(ev) {
-    el('feed-empty').hidden = true;
-    var feed = el('feed');
-    feed.insertBefore(feedRow(ev, true), feed.firstChild);
-    while (feed.children.length > MAX_FEED) feed.removeChild(feed.lastChild);
-    totals[bucket(ev.outcome)] += 1;
-    renderTotals();
+  window.addEventListener('hashchange', route);
+
+  // ---- overview ----
+  function renderVerdict() {
+    if (!boot) return;
+    var banner = el('verdict');
+    var unhealthy = boot.projects.filter(function (p) { return !p.missing && !p.healthy; });
+    var liveCount = boot.projects.filter(function (p) { return !p.missing; }).length;
+    var state, headline, sub;
+    if (totals.denied > 0 || unhealthy.length > 0) {
+      state = 'bad'; headline = '✕ Attention';
+      sub = unhealthy.length > 0
+        ? unhealthy[0].name + ' protection is broken — run crasp status there' +
+          (totals.denied > 0 ? ' · ' + totals.denied + ' blocked today' : '')
+        : totals.denied + ' operation' + (totals.denied === 1 ? '' : 's') + ' blocked today — review Activity';
+    } else if (totals.ask > 0 || totals.advisory > 0) {
+      state = 'warn'; headline = '⚠ Needs a look';
+      sub = totals.ask + ' asked · ' + totals.advisory + ' noted today — nothing was blocked';
+    } else {
+      state = 'ok'; headline = '✓ All clear';
+      sub = liveCount + ' of ' + liveCount + ' project' + (liveCount === 1 ? '' : 's') + ' protected · ' +
+        (totals.clean + totals.advisory + totals.ask + totals.denied) + ' checks today · nothing blocked';
+    }
+    banner.className = 'banner ' + state;
+    el('verdict-headline').textContent = headline;
+    el('verdict-sub').textContent = sub;
+    el('s-checked').textContent = totals.clean + totals.advisory + totals.ask + totals.denied;
+    el('s-asked').textContent = totals.ask;
+    el('s-blocked').textContent = totals.denied;
   }
-  function renderProjects(projects) {
-    el('projects-empty').hidden = projects.length > 0;
-    var ul = el('projects');
-    ul.textContent = '';
-    projects.forEach(function (p) {
-      var li = document.createElement('li');
-      li.appendChild(text('span', 'health ' + (p.healthy ? 'ok' : 'bad'), ''));
-      li.appendChild(text('span', 'pname', p.name));
-      if (!p.healthy) li.appendChild(text('span', 'pproblems', p.problems.length + ' problem' + (p.problems.length === 1 ? '' : 's')));
-      var last = p.lastEventTs ? new Date(p.lastEventTs).toLocaleString() : 'no events yet';
-      li.appendChild(text('span', 'plast', last));
-      li.title = p.path + (p.problems.length ? '\n' + p.problems.join('\n') : '');
-      ul.appendChild(li);
-    });
-  }
-  function renderChart(daily) {
-    var svg = el('chart');
+  function renderSpark() {
+    if (!boot) return;
+    var svg = el('spark');
     while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var daily = boot.aggregates.daily.slice(-14);
     if (!daily.length) return;
-    var W = 600, H = 150, PAD = 2;
+    var W = 560, H = 90, PAD = 4;
     var bw = (W - PAD * (daily.length - 1)) / daily.length;
     var max = 1;
     daily.forEach(function (d) { max = Math.max(max, d.clean + d.advisory + d.ask + d.denied); });
     var ns = 'http://www.w3.org/2000/svg';
     var colors = { clean: 'var(--ok)', advisory: 'var(--adv)', ask: 'var(--warn)', denied: 'var(--deny)' };
     daily.forEach(function (d, i) {
-      var x = i * (bw + PAD);
-      var y = H;
+      var x = i * (bw + PAD), y = H;
       var total = d.clean + d.advisory + d.ask + d.denied;
       ['clean', 'advisory', 'ask', 'denied'].forEach(function (k) {
         if (!d[k]) return;
-        var h = (d[k] / max) * (H - 10);
+        var h = (d[k] / max) * (H - 8);
         y -= h;
         var r = document.createElementNS(ns, 'rect');
         r.setAttribute('x', x); r.setAttribute('y', y);
         r.setAttribute('width', bw); r.setAttribute('height', h);
-        r.setAttribute('rx', 1.5);
-        r.setAttribute('fill', colors[k]);
+        r.setAttribute('rx', 2); r.setAttribute('fill', colors[k]);
         svg.appendChild(r);
       });
       if (total === 0) {
@@ -259,82 +443,233 @@ td.rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size
       svg.appendChild(title);
     });
   }
-  function renderRankTable(id, rows, labelKey, labelClass) {
-    var table = el(id);
-    table.textContent = '';
-    if (!rows.length) {
-      var tr0 = document.createElement('tr');
-      var td0 = text('td', null, 'Nothing yet');
-      td0.style.color = 'var(--muted)';
-      tr0.appendChild(td0);
-      table.appendChild(tr0);
+  function renderLatest() {
+    var target = el('latest');
+    if (!events.length) { target.textContent = 'No events yet.'; return; }
+    var ev = events[0];
+    target.textContent = '';
+    target.appendChild(text('span', null, 'Latest: '));
+    target.appendChild(text('b', null, hhmm(ev.ts) + ' · ' + ev.project + ' · ' + sentenceFor(ev)));
+  }
+  function renderFresh() {
+    var ts = freshTs();
+    var state = el('fresh-state');
+    state.textContent = '';
+    if (ts) {
+      state.appendChild(text('span', null, 'counting since ' + new Date(ts).toLocaleString() + ' · '));
+      var undo = text('a', null, 'undo');
+      undo.onclick = function () {
+        try { localStorage.removeItem(FRESH_KEY); } catch (e) {}
+        loadAll();
+      };
+      state.appendChild(undo);
+    }
+  }
+
+  // ---- activity ----
+  function matchesFilter(ev) {
+    if (filter === 'all') return true;
+    if (filter === 'flagged') return isFlagged(ev);
+    return bucket(ev.outcome) === 'denied';
+  }
+  function feedRow(ev, fresh) {
+    var li = document.createElement('li');
+    if (fresh) li.className = 'fresh-row';
+    li.appendChild(text('span', 'time', hhmm(ev.ts)));
+    li.appendChild(text('span', 'proj', ev.project));
+    var s = text('span', 'sentence', sentenceFor(ev));
+    s.title = ev.filePath == null ? '' : String(ev.filePath);
+    li.appendChild(s);
+    if (ev.ruleId) li.appendChild(text('span', 'rname', ruleInfo(ev.ruleId)[0]));
+    li.appendChild(text('span', 'badge ' + BUCKET_CLASS[bucket(ev.outcome)], badgeLabel(ev.outcome)));
+    return li;
+  }
+  function runRow(run, key) {
+    var li = document.createElement('li');
+    li.className = 'runrow';
+    li.textContent = '▸ ' + run.length + ' routine check' + (run.length === 1 ? '' : 's') +
+      ' (' + hhmm(run[run.length - 1].ts) + '–' + hhmm(run[0].ts) + ')';
+    li.onclick = function () { expandedRuns[key] = true; renderFeed(); };
+    return li;
+  }
+  function renderFeed() {
+    var feed = el('feed');
+    feed.textContent = '';
+    var visible = events.filter(matchesFilter).slice(0, MAX_ROWS);
+    el('feed-empty').hidden = visible.length > 0;
+    if (filter !== 'all') {
+      visible.forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
       return;
     }
-    var max = rows[0].count;
-    rows.forEach(function (r) {
-      var tr = document.createElement('tr');
-      tr.appendChild(text('td', labelClass, r[labelKey]));
-      tr.appendChild(text('td', 'num', r.count));
-      var barCell = document.createElement('td');
-      barCell.className = 'bar-cell';
+    var i = 0;
+    while (i < visible.length) {
+      if (isFlagged(visible[i])) { feed.appendChild(feedRow(visible[i], false)); i++; continue; }
+      var run = [];
+      while (i < visible.length && !isFlagged(visible[i])) { run.push(visible[i]); i++; }
+      // Key a run by its OLDEST event so a prepended live clean event extends
+      // the same run without losing its expanded state on re-render.
+      var oldest = run[run.length - 1];
+      var key = oldest.ts + '|' + oldest.project;
+      if (run.length < 3 || expandedRuns[key]) {
+        run.forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
+      } else {
+        feed.appendChild(runRow(run, key));
+      }
+    }
+  }
+
+  // ---- rules ----
+  function renderRules() {
+    if (!boot) return;
+    var list = el('rules-list');
+    list.textContent = '';
+    var counts = {};
+    events.forEach(function (ev) { if (ev.ruleId) counts[ev.ruleId] = (counts[ev.ruleId] || 0) + 1; });
+    var ids = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1); });
+    el('rules-empty').hidden = ids.length > 0;
+    if (!ids.length) return;
+    var max = counts[ids[0]];
+    ids.forEach(function (id) {
+      var info = ruleInfo(id);
+      var sev = (serverRules[id] && serverRules[id].severity) ||
+        (id.indexOf('secret-') === 0 ? 'critical' : id.indexOf('sensitive-') === 0 ? 'high' : id.indexOf('inbound-') === 0 ? 'high' : 'medium');
+      var row = document.createElement('div');
+      row.className = 'rule-row';
+      var main = document.createElement('div');
+      main.className = 'rule-main';
+      var name = text('div', 'rule-name', info[0]);
+      name.appendChild(text('span', 'rid', id));
+      main.appendChild(name);
+      if (info[1]) main.appendChild(text('div', 'rule-desc', info[1]));
+      row.appendChild(main);
+      row.appendChild(text('div', 'rule-count', counts[id]));
+      var barWrap = document.createElement('div');
+      barWrap.className = 'rule-bar';
       var bar = document.createElement('div');
-      bar.className = 'bar';
-      bar.style.width = Math.max(4, Math.round((r.count / max) * 100)) + '%';
-      barCell.appendChild(bar);
-      tr.appendChild(barCell);
-      table.appendChild(tr);
+      bar.className = 'sev-' + sev;
+      bar.style.width = Math.max(6, Math.round((counts[id] / max) * 100)) + '%';
+      barWrap.appendChild(bar);
+      row.appendChild(barWrap);
+      list.appendChild(row);
     });
   }
 
-  var range = '30';
-  function clearView() {
-    totals = { clean: 0, advisory: 0, ask: 0, denied: 0 };
-    renderTotals();
-    el('feed').textContent = '';
-    el('feed-empty').hidden = false;
-    renderChart([]);
-    renderRankTable('rules', [], 'ruleId', 'rule');
-    renderRankTable('by-project', [], 'project', null);
+  // ---- projects ----
+  function renderProjects() {
+    if (!boot) return;
+    var wrap = el('pcards');
+    wrap.textContent = '';
+    var counts = {};
+    events.forEach(function (ev) { counts[ev.project] = (counts[ev.project] || 0) + 1; });
+    boot.projects.forEach(function (p) {
+      var card = document.createElement('div');
+      card.className = p.missing ? 'pcard gone' : 'pcard';
+      var head = document.createElement('div');
+      head.className = 'prow';
+      head.appendChild(text('span', 'health ' + (p.missing ? 'off' : p.healthy ? 'ok' : 'bad'), ''));
+      head.appendChild(text('span', null, p.name));
+      card.appendChild(head);
+      var pathLine = text('div', 'ppath', p.path);
+      pathLine.title = p.path;
+      card.appendChild(pathLine);
+      if (p.missing) {
+        card.appendChild(text('div', 'pmeta', 'folder missing — was this project moved or deleted?'));
+      } else {
+        var last = p.lastEventTs ? new Date(p.lastEventTs).toLocaleString() : 'no events yet';
+        card.appendChild(text('div', 'pmeta', (counts[p.name] || 0) + ' events in window · last: ' + last));
+        if (!p.healthy) p.problems.forEach(function (pr) { card.appendChild(text('div', 'pproblem', pr)); });
+      }
+      wrap.appendChild(card);
+    });
+    var add = document.createElement('div');
+    add.className = 'pcard';
+    add.appendChild(text('div', 'prow', 'Protect another project'));
+    add.appendChild(text('div', 'pmeta', 'Run this once inside the project (click to copy):'));
+    var cmd = text('div', 'pcopy', 'npx @crasp/cli setup');
+    cmd.title = 'Click to copy';
+    cmd.onclick = function () {
+      try {
+        if (navigator.clipboard) navigator.clipboard.writeText('npx @crasp/cli setup');
+        cmd.textContent = 'copied ✓';
+        setTimeout(function () { cmd.textContent = 'npx @crasp/cli setup'; }, 1200);
+      } catch (e) { /* clipboard blocked — the text is still selectable */ }
+    };
+    add.appendChild(cmd);
+    wrap.appendChild(add);
   }
-  function loadRange(next) {
-    range = next;
-    var buttons = el('range').querySelectorAll('button');
-    for (var i = 0; i < buttons.length; i++) {
-      buttons[i].className = buttons[i].getAttribute('data-range') === next ? 'on' : '';
-    }
-    if (next === 'live') {
-      clearView();
-      return;
-    }
-    fetch('/api/bootstrap?days=' + next).then(function (r) { return r.json(); }).then(function (b) {
-      if (range !== next) return; // user switched again while loading
-      totals = b.aggregates.today;
-      renderTotals();
-      renderProjects(b.projects);
-      renderChart(b.aggregates.daily);
-      renderRankTable('rules', b.aggregates.topRules, 'ruleId', 'rule');
-      renderRankTable('by-project', b.aggregates.byProject, 'project', null);
-      var feed = el('feed');
-      feed.textContent = '';
-      el('feed-empty').hidden = b.events.length > 0;
-      b.events.slice(0, 50).forEach(function (ev) { feed.appendChild(feedRow(ev, false)); });
+
+  function renderAll() {
+    renderVerdict(); renderSpark(); renderLatest(); renderFresh();
+    renderFeed(); renderRules(); renderProjects();
+  }
+
+  // ---- data ----
+  function loadAll() {
+    var q = '/api/bootstrap?days=' + (range === '90' ? '90' : '30');
+    var ts = freshTs();
+    if (ts) q += '&since=' + encodeURIComponent(ts);
+    fetch(q).then(function (r) { return r.json(); }).then(function (b) {
+      boot = b;
+      serverRules = {};
+      (b.rules || []).forEach(function (r) { serverRules[r.id] = r; });
+      seen = {};
+      expandedRuns = {};
+      events = range === 'live' ? [] : b.events.slice();
+      events.forEach(function (ev) { seen[eventKey(ev)] = true; });
+      totals = { clean: b.aggregates.today.clean, advisory: b.aggregates.today.advisory,
+                 ask: b.aggregates.today.ask, denied: b.aggregates.today.denied };
+      renderAll();
     }).catch(function () {
       el('live-dot').classList.remove('live');
     });
   }
+
+  el('start-fresh').onclick = function () {
+    try { localStorage.setItem(FRESH_KEY, new Date().toISOString()); } catch (e) {}
+    loadAll();
+  };
   el('range').addEventListener('click', function (e) {
-    var target = e.target;
-    var r = target && target.getAttribute ? target.getAttribute('data-range') : null;
-    if (r && r !== range) loadRange(r);
+    var t = e.target;
+    var r = t && t.getAttribute ? t.getAttribute('data-range') : null;
+    if (!r || r === range) return;
+    range = r;
+    var buttons = el('range').querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].className = buttons[i].getAttribute('data-range') === r ? 'on' : '';
+    }
+    loadAll();
   });
-  loadRange('30');
+  el('chips').addEventListener('click', function (e) {
+    var t = e.target;
+    var f = t && t.getAttribute ? t.getAttribute('data-filter') : null;
+    if (!f || f === filter) return;
+    filter = f;
+    var buttons = el('chips').querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].className = buttons[i].getAttribute('data-filter') === f ? 'on' : '';
+    }
+    renderFeed();
+  });
 
   var es = new EventSource('/api/stream');
   es.onopen = function () { el('live-dot').classList.add('live'); };
   es.onerror = function () { el('live-dot').classList.remove('live'); };
   es.onmessage = function (m) {
-    try { addLive(JSON.parse(m.data)); } catch (e) { /* skip malformed frame */ }
+    var ev;
+    try { ev = JSON.parse(m.data); } catch (e) { return; }
+    var ts = freshTs();
+    if (ts && ev.ts && Date.parse(ev.ts) < Date.parse(ts)) return;   // before the "start fresh" cutoff
+    var key = eventKey(ev);
+    if (seen[key]) return;                    // already delivered by bootstrap or an earlier frame
+    seen[key] = true;
+    events.unshift(ev);
+    if (events.length > 5000) events.pop();
+    if (ev.ts && isToday(ev.ts)) { totals[bucket(ev.outcome)] += 1; }
+    renderVerdict(); renderLatest(); renderFeed(); renderRules();
   };
+
+  route();
+  loadAll();
 })();
 </script>
 </body>

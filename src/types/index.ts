@@ -219,11 +219,21 @@ export interface PanelProjectInfo {
   healthy: boolean;
   problems: string[];
   lastEventTs: string | null;
+  /** Registry entry whose folder no longer exists on disk. */
+  missing: boolean;
+}
+
+export interface PanelRuleInfo {
+  id: string;
+  description: string;
+  severity: Severity;
 }
 
 export interface PanelBootstrap {
   projects: PanelProjectInfo[];
-  /** Newest first, last 30 days, capped at 5000. */
+  /** Newest first, requested window, capped at 5000. */
   events: TaggedEvent[];
   aggregates: PanelAggregates;
+  /** Built-in + user rule metadata for humanizing rule ids. */
+  rules: PanelRuleInfo[];
 }

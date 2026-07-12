@@ -37,6 +37,8 @@ describe("crasp panel", () => {
   let project: string;
   let child: ChildProcess;
   let url: string;
+  let oldTs: string;
+  let newestTs: string;
 
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "crasp-panel-"));
@@ -51,12 +53,32 @@ describe("crasp panel", () => {
         { path: path.join(root, "gone"), registeredAt: new Date().toISOString() },
       ])
     );
+    // A user policy with a custom rule id so we can assert merged-rule metadata.
+    await writeFile(
+      path.join(project, "crasp.policy.yml"),
+      [
+        "id: test",
+        "name: Test",
+        "rules:",
+        "  - id: my-custom-rule",
+        "    description: My custom thing",
+        "    severity: high",
+        "    pattern: forbidden-token",
+      ].join("\n") + "\n"
+    );
+    // Explicit timestamps: one event 5 days back (in the 30d window but before a
+    // 2-day cutoff), three today. newestTs is the most recent so lastEventTs is
+    // deterministic and distinguishable from a since-filtered computation.
+    const t0 = Date.now();
+    oldTs = new Date(t0 - 5 * 86_400_000).toISOString();
+    newestTs = new Date(t0 - 1_000).toISOString();
     await writeFile(
       path.join(project, ".crasp", "events.ndjson"),
       [
-        entryLine({}),
-        entryLine({ tool: "Bash", filePath: "sudo rm x", outcome: "ask", ruleId: "bash-sudo" }),
-        entryLine({ outcome: "denied", ruleId: "token-leakage" }),
+        entryLine({ ts: oldTs, tool: "Edit", filePath: "old.ts", outcome: "clean" }),
+        entryLine({ ts: new Date(t0 - 3_000).toISOString(), outcome: "clean" }),
+        entryLine({ ts: new Date(t0 - 2_000).toISOString(), tool: "Bash", filePath: "sudo rm x", outcome: "ask", ruleId: "bash-sudo" }),
+        entryLine({ ts: newestTs, outcome: "denied", ruleId: "token-leakage" }),
       ].join("\n") + "\n"
     );
     child = spawn(process.execPath, [CLI, "panel", "--no-open", "--port", "0"], {
@@ -70,27 +92,84 @@ describe("crasp panel", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("serves the dashboard page at /", async () => {
+  it("serves the dashboard page at / with the v2 tab markers", async () => {
     const res = await fetch(url + "/");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("crasp panel");
-    expect(html).toContain("Live feed");
+    for (const marker of [
+      'data-tab="overview"', 'data-tab="activity"', 'data-tab="rules"', 'data-tab="projects"',
+      'id="verdict"', 'id="feed"', 'id="start-fresh"',
+    ]) {
+      expect(html, marker).toContain(marker);
+    }
   });
 
-  it("bootstrap returns registered projects (skipping missing paths), events, aggregates", async () => {
+  it("the page has no XSS sinks and exactly one String.raw template", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const src = await readFile(path.resolve("src/core/panel/page.ts"), "utf8");
+    for (const sink of ["innerHTML", "insertAdjacentHTML", "outerHTML", "document.write"]) {
+      expect(src, sink).not.toContain(sink);
+    }
+    expect((src.match(/String\.raw/g) ?? []).length).toBe(1);
+    const body = src.slice(src.indexOf("String.raw"));
+    expect(body.includes("$" + "{")).toBe(false);
+  });
+
+  it("bootstrap includes live + missing projects, events, aggregates", async () => {
     const res = await fetch(url + "/api/bootstrap");
     expect(res.status).toBe(200);
     const b = (await res.json()) as PanelBootstrap;
-    expect(b.projects).toHaveLength(1);
-    expect(b.projects[0].name).toBe("alpha");
-    expect(typeof b.projects[0].healthy).toBe("boolean");
-    expect(b.projects[0].lastEventTs).not.toBeNull();
-    expect(b.events).toHaveLength(3);
+    expect(b.projects).toHaveLength(2);
+    const alpha = b.projects.find((p) => p.name === "alpha")!;
+    expect(alpha.missing).toBe(false);
+    expect(typeof alpha.healthy).toBe("boolean");
+    expect(alpha.lastEventTs).toBe(newestTs);
+    const gone = b.projects.find((p) => p.name === "gone")!;
+    expect(gone.missing).toBe(true);
+    expect(gone.healthy).toBe(false);
+    expect(b.events).toHaveLength(4);
     expect(b.events[0].project).toBe("alpha");
     expect(b.aggregates.today).toEqual({ clean: 1, advisory: 0, ask: 1, denied: 1 });
     expect(b.aggregates.topRules.map((r) => r.ruleId).sort()).toEqual(["bash-sudo", "token-leakage"]);
+  });
+
+  it("since filters events and aggregates numerically, but not lastEventTs", async () => {
+    const cutoff = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const b = (await (await fetch(url + "/api/bootstrap?since=" + encodeURIComponent(cutoff))).json()) as PanelBootstrap;
+    expect(b.events).toHaveLength(3); // the 5-day-old event is excluded
+    expect(b.events.every((e) => Date.parse(e.ts) >= Date.parse(cutoff))).toBe(true);
+    const total = b.aggregates.daily.reduce((n, d) => n + d.clean + d.advisory + d.ask + d.denied, 0);
+    expect(total).toBe(3);
+    // lastEventTs is computed over the window BEFORE the since-filter.
+    const alpha = b.projects.find((p) => p.name === "alpha")!;
+    expect(alpha.lastEventTs).toBe(newestTs);
+  });
+
+  it("a future since empties events but keeps lastEventTs (proves pre-filter computation)", async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const b = (await (await fetch(url + "/api/bootstrap?since=" + encodeURIComponent(future))).json()) as PanelBootstrap;
+    expect(b.events).toHaveLength(0);
+    const alpha = b.projects.find((p) => p.name === "alpha")!;
+    expect(alpha.lastEventTs).toBe(newestTs); // would be null if computed after the filter
+  });
+
+  it("ignores an unparseable since", async () => {
+    const b = (await (await fetch(url + "/api/bootstrap?since=banana")).json()) as PanelBootstrap;
+    expect(b.events).toHaveLength(4);
+  });
+
+  it("exposes built-in AND user-defined rule metadata", async () => {
+    const b = (await (await fetch(url + "/api/bootstrap")).json()) as PanelBootstrap;
+    const pi = b.rules.find((r) => r.id === "prompt-injection");
+    expect(pi).toBeDefined();
+    expect(pi!.severity).toBe("high");
+    expect(pi!.description.length).toBeGreaterThan(0);
+    const custom = b.rules.find((r) => r.id === "my-custom-rule");
+    expect(custom).toBeDefined();
+    expect(custom!.description).toBe("My custom thing");
+    expect(custom!.severity).toBe("high");
   });
 
   it("streams a newly appended event over SSE", async () => {
