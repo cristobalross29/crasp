@@ -1,3 +1,8 @@
+---
+name: test-hook
+description: Use when the user wants to simulate a Claude Code PreToolUse hook payload and see exactly what Crasp would do — which tier fired, what response was sent, and what would be logged.
+---
+
 # Skill: test-hook
 
 Simulate a Claude Code PreToolUse hook payload and show exactly what Crasp would do — which tier fired, what response was sent, and what would be logged.

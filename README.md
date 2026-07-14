@@ -139,6 +139,10 @@ rules:
     message: "Production database reference detected."
 ```
 
+Patterns match case-insensitively by default. Add `caseSensitive: true` to a rule when
+the casing is the signal — e.g. the JS `Function()` constructor vs. a lowercase
+`function` declaration.
+
 Crasp merges your rules with the built-in ones on every check. Built-in rules always
 stay active — your file adds coverage, it cannot weaken the baseline.
 

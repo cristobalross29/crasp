@@ -39,7 +39,7 @@ The user types `/release` optionally followed by the bump kind or explicit versi
    ```sh
    git log $(git describe --tags --abbrev=0)..HEAD --oneline
    ```
-   Group entries into Added / Changed / Fixed. Keep it human-readable; match the existing CHANGELOG formatting.
+   Group entries into Added / Changed / Fixed. Keep it human-readable; match the existing CHANGELOG formatting, **including the compare link** at the bottom of the file (`[X.Y.Z]: https://github.com/cristobalross29/crasp/compare/vPREV...vX.Y.Z`).
 
 6. **Commit and tag** — Match the existing convention exactly:
    ```sh
@@ -54,6 +54,10 @@ The user types `/release` optionally followed by the bump kind or explicit versi
    npm publish        # or pnpm publish
    ```
    Ask the user to confirm before any push or publish.
+
+8. **Sync the landing page** — After the release commit, invoke the `sync-page` skill:
+   `../crasp-page` duplicates the version, rule counts, and feature copy, and every
+   release drifts it. A release is not finished until the page reflects it.
 
 ## Rules
 

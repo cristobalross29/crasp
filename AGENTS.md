@@ -28,7 +28,7 @@ Use Claude Code for:
   `/audit-safety`
 - Refactoring, type fixes, and dependency changes
 
-Default model: `claude-sonnet-4-6`. Upgrade to `claude-opus-4-7` for complex
+Default model: `claude-sonnet-5`. Upgrade to `claude-opus-4-8` for complex
 multi-file refactors or security reasoning tasks.
 
 Project skills:
@@ -39,6 +39,10 @@ Project skills:
 | new-policy | `/new-policy` | Generate a policy YAML from rule descriptions |
 | run-fence | `/run-fence` | Build the project and run Crasp against one or more scenarios |
 | audit-safety | `/audit-safety` | Run all scenarios under `scenarios/` with the default policy |
+| test-hook | `/test-hook` | Simulate a PreToolUse hook payload and show what Crasp does |
+| new-rule | `/new-rule` | Add a built-in detection rule to the source + its paired test |
+| triage-log | `/triage-log` | Analyze `.crasp/events.ndjson` and recommend policy tuning |
+| release | `/release` | Cut a versioned release (user-invoked only) |
 
 ### Codex
 
@@ -111,7 +115,7 @@ Commit messages follow conventional commits: `feat:`, `fix:`, `test:`, and
 
 | Task | Agent | Model |
 | --- | --- | --- |
-| Everyday development | Claude Code | `claude-sonnet-4-6` |
-| Complex security reasoning | Claude Code | `claude-opus-4-7` |
+| Everyday development | Claude Code | `claude-sonnet-5` |
+| Complex security reasoning | Claude Code | `claude-opus-4-8` |
 | Focused implementation tasks | Codex | Codex default |
 | Batch test authoring | Codex | Codex default |

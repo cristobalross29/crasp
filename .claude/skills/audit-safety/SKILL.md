@@ -1,3 +1,8 @@
+---
+name: audit-safety
+description: Use when the user wants a full safety sweep — run every scenario in the project against the active policy and produce a consolidated findings report.
+---
+
 # Skill: audit-safety
 
 Run a full safety sweep: execute every scenario found in the project against the active policy and produce a consolidated findings report.

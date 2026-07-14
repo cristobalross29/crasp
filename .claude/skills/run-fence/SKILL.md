@@ -1,3 +1,8 @@
+---
+name: run-fence
+description: Use when the user wants to build Crasp and run one or more scenarios, then interpret the pass/fail results.
+---
+
 # Skill: run-fence
 
 Build Crasp and run one or more scenarios, then interpret the results for the user.

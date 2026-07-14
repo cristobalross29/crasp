@@ -1,3 +1,8 @@
+---
+name: new-policy
+description: Use when the user wants to generate a Crasp policy YAML overlay (crasp.policy.yml) from natural-language rule descriptions. Distinct from /new-rule, which edits shipped TypeScript rules.
+---
+
 # Skill: new-policy
 
 Generate an Crasp policy YAML from a natural-language description of the rules to enforce.

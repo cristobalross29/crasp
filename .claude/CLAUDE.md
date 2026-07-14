@@ -17,7 +17,7 @@ CLI (after build):
 ```sh
 node dist/index.js setup                          # wire hooks, MCP, CLAUDE.md into a project
 node dist/index.js check --hook-input Write       # evaluate a PreToolUse payload from stdin
-node dist/index.js hook-log                       # show today's hook activity
+node dist/index.js hook-log                       # show last 2 days of hook activity (--days N)
 node dist/index.js hook-log --summary             # 30-day stats only
 node dist/index.js mcp                            # start MCP server (stdio)
 node dist/index.js run <scenario.yml>             # run a scenario transcript
@@ -47,7 +47,7 @@ src/
     hook-log/
       index.ts            # appendHookLogEntry(), readHookLog(), hookLogPath()
     patterns/
-      builtin.ts          # BUILTIN_POLICY — 10 always-on rules
+      builtin.ts          # BUILTIN_POLICY — 9 always-on rules
       index.ts            # mergeWithBuiltin() — merges user policy over builtin
     panel/
       server.ts           # startPanelServer() — http + SSE endpoints
@@ -62,8 +62,13 @@ src/
       schema.ts           # Zod schema for Policy
     scanner/
       index.ts            # scanContent(), scanFile(), scanDirectory()
+      secrets.ts          # provider-level secret detection (secret-* rule ids)
+      secret-rule-ids.ts  # isSecretRule() — "secret-" prefix contract
+      inbound.ts          # detectInbound() — PostToolUse injection checks
       sensitive-paths.ts  # checkSensitivePath() — tier-based path rules
       redact.ts           # redactSensitiveScanResults()
+    install/              # shared-bundle install/repair (~/.crasp/bin)
+    trace/                # trace capture/replay
     config/               # loadConfig(), writeConfig()
     engine.ts             # runScenario() — scenario test orchestrator
     evaluator/            # evaluateScenario()
@@ -195,7 +200,6 @@ To add a new sensitive path rule: add an entry to `SENSITIVE_PATH_RULES` array i
 ## Builtin Policy Rules
 
 Defined in `src/core/patterns/builtin.ts`. Always active, merged with the user's `crasp.policy.yml`:
-- `token-leakage` (critical) — leaked API keys, `sk-*`, `github_pat_*`, bearer tokens
 - `credential-exfiltration` (critical) — instructions to steal/dump credentials
 - `prompt-injection` (high) — "ignore previous instructions" patterns
 - `ssrf` (high) — cloud metadata endpoints
@@ -205,6 +209,10 @@ Defined in `src/core/patterns/builtin.ts`. Always active, merged with the user's
 - `pii-exposure` (high) — SSN, credit card, passport patterns
 - `jailbreak-attempt` (medium) — DAN mode, bypass safety controls
 - `system-prompt-extraction` (medium) — reveal system prompt attempts
+
+Secret detection (leaked API keys, `sk-*`, `github_pat_*`, bearer tokens) is a
+separate scanner family in `src/core/scanner/secrets.ts` with `secret-*` rule ids
+(see `secret-rule-ids.ts`; the legacy `token-leakage` id was retired).
 
 ## Conventions
 
@@ -263,3 +271,6 @@ Defined in `src/core/patterns/builtin.ts`. Always active, merged with the user's
 | `new-policy` | `/new-policy` | Generate a policy YAML from rule descriptions |
 | `run-fence` | `/run-fence` | Build + run scenarios and interpret results |
 | `audit-safety` | `/audit-safety` | Full sweep of all scenarios against the active policy |
+| `new-rule` | `/new-rule` | Add a built-in detection rule to the source + its paired test |
+| `triage-log` | `/triage-log` | Analyze `.crasp/events.ndjson` and recommend policy tuning |
+| `release` | `/release` | Cut a versioned release (user-invoked only) |

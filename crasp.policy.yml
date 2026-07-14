@@ -18,3 +18,13 @@ rules:
 #   - path: ".env.local"
 #     ops: [write, edit]
 #     reason: "I manage .env.local directly with Claude's help"
+exceptions:
+  - path: "README.md"
+    ops: [any]
+    reason: "Documents the builtin rules; quotes their trigger patterns as examples"
+  - path: ".claude/CLAUDE.md"
+    ops: [any]
+    reason: "Architecture doc lists builtin rule ids and example patterns"
+  - path: ".claude/skills/**"
+    ops: [any]
+    reason: "Skill docs describe rule authoring and quote pattern examples"

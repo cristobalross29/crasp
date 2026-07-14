@@ -1,3 +1,8 @@
+---
+name: new-scenario
+description: Use when the user wants to generate a Crasp scenario YAML in scenarios/ from a natural-language description of the AI behavior to test.
+---
+
 # Skill: new-scenario
 
 Generate a scenario YAML file for Crasp from a natural-language description of the AI behavior to test.
