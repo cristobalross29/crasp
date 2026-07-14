@@ -40,19 +40,21 @@ describe("policyExceptionSchema scan op", () => {
     expect(result.ops).toEqual(["scan"]);
   });
 
-  it("rejects scan/read/write/edit ops without a path", () => {
+  it("rejects a scan op without a path", () => {
     expect(() =>
       policyExceptionSchema.parse({ command: "^ls$", ops: ["scan"] })
     ).toThrow();
-    expect(() =>
-      policyExceptionSchema.parse({ command: "^ls$", ops: ["read"] })
-    ).toThrow();
   });
 
-  it("rejects bash ops without a command", () => {
-    expect(() =>
-      policyExceptionSchema.parse({ path: ".env.local", ops: ["bash"] })
-    ).toThrow();
+  it("keeps accepting 0.2.3-valid shapes (no retroactive rejection)", () => {
+    // Previously-valid policies must not start failing to parse on upgrade —
+    // a parse failure silently degrades hooks to builtin-only.
+    expect(
+      policyExceptionSchema.parse({ path: ".env.local", ops: ["read", "bash"] }).ops
+    ).toEqual(["read", "bash"]);
+    expect(
+      policyExceptionSchema.parse({ command: "^ls$", ops: ["read"] }).ops
+    ).toEqual(["read"]);
   });
 
   it("still accepts any-op exceptions with either selector", () => {
@@ -73,9 +75,11 @@ describe("matchesScanException", () => {
     expect(matchesScanException("/repo/README.md", exceptions, base)).toBe(true);
   });
 
-  it("matches a path exception whose ops include any", () => {
+  it("does NOT treat 'any' as a scan exception — scan must be explicit", () => {
+    // A 0.2.3 user's ops:[any] hook exception must not silently start
+    // disabling policy-rule matching at the commit gate on upgrade.
     const exceptions: PolicyException[] = [{ path: "README.md", ops: ["any"] }];
-    expect(matchesScanException("/repo/README.md", exceptions, base)).toBe(true);
+    expect(matchesScanException("/repo/README.md", exceptions, base)).toBe(false);
   });
 
   it("does not match when ops are hook-only", () => {
@@ -83,6 +87,21 @@ describe("matchesScanException", () => {
       { path: "README.md", ops: ["read", "write", "edit"] }
     ];
     expect(matchesScanException("/repo/README.md", exceptions, base)).toBe(false);
+  });
+
+  it("bare filenames are root-relative for scans — no basename tier", () => {
+    const exceptions: PolicyException[] = [{ path: "README.md", ops: ["scan"] }];
+    expect(matchesScanException("/repo/README.md", exceptions, base)).toBe(true);
+    expect(
+      matchesScanException("/repo/payload/README.md", exceptions, base)
+    ).toBe(false);
+  });
+
+  it("matches dotfiles and dot-directories inside excepted globs", () => {
+    const exceptions: PolicyException[] = [{ path: "docs/**", ops: ["scan"] }];
+    expect(
+      matchesScanException("/repo/docs/.vitepress/snippets.md", exceptions, base)
+    ).toBe(true);
   });
 
   it("never matches command-only exceptions", () => {
@@ -94,7 +113,7 @@ describe("matchesScanException", () => {
 
   it("matches nested globs relative to the base directory", () => {
     const exceptions: PolicyException[] = [
-      { path: ".claude/skills/**", ops: ["any"] }
+      { path: ".claude/skills/**", ops: ["scan"] }
     ];
     expect(
       matchesScanException("/repo/.claude/skills/release/SKILL.md", exceptions, base)

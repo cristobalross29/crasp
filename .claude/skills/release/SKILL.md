@@ -33,7 +33,7 @@ The user types `/release` optionally followed by the bump kind or explicit versi
    ```
    If anything fails, stop and report. Do not bump or commit a broken build.
 
-4. **Bump the version** — Update the `version` field in `package.json` to the new version. Do not run `npm version` (it creates its own commit/tag with a different message shape); edit the field directly to keep the repo's `chore: release vX.Y.Z` convention.
+4. **Bump the version** — Update the `version` field in `package.json` AND `CLI_VERSION` in `src/version.ts` to the new version (they must match — `tests/cli/version.test.ts` enforces it, and `installBundle`'s version compare breaks on a mismatch). Do not run `npm version` (it creates its own commit/tag with a different message shape); edit the fields directly to keep the repo's `chore: release vX.Y.Z` convention.
 
 5. **Update CHANGELOG.md** — Add a new section at the top for the new version. Summarize what changed since the last release by reading the commits:
    ```sh
@@ -43,7 +43,7 @@ The user types `/release` optionally followed by the bump kind or explicit versi
 
 6. **Commit and tag** — Match the existing convention exactly:
    ```sh
-   git add package.json CHANGELOG.md
+   git add package.json src/version.ts CHANGELOG.md
    git commit -m "chore: release v<new-version>"
    git tag v<new-version>
    ```

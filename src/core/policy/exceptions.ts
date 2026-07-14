@@ -26,18 +26,25 @@ export function matchesBashException(
   });
 }
 
+const GLOB_OPTS = { dot: true };
+
 function matchesExceptionPath(
   filePath: string,
   exceptionPath: string,
-  baseDir: string
+  baseDir: string,
+  // The basename tier makes a bare filename match at any depth. Hook exceptions
+  // keep it (the documented ".env.local" style relies on it); scan exceptions
+  // must NOT — in the commit gate, excepting "README.md" may not silently
+  // except payload/README.md. Scan globs resolve relative to the project root.
+  includeBasename: boolean
 ): boolean {
   const toSlashes = (p: string): string => p.split(path.sep).join("/");
-  const basename = path.basename(filePath);
   const relPath = toSlashes(path.normalize(path.relative(baseDir, filePath)));
   return (
-    micromatch.isMatch(basename, exceptionPath) ||
-    micromatch.isMatch(relPath, exceptionPath) ||
-    micromatch.isMatch(toSlashes(filePath), exceptionPath)
+    (includeBasename &&
+      micromatch.isMatch(path.basename(filePath), exceptionPath, GLOB_OPTS)) ||
+    micromatch.isMatch(relPath, exceptionPath, GLOB_OPTS) ||
+    micromatch.isMatch(toSlashes(filePath), exceptionPath, GLOB_OPTS)
   );
 }
 
@@ -50,11 +57,14 @@ export function matchesException(
   const normalizedOp = OP_MAP[op];
   return exceptions.some((ex) => {
     if (!ex.path) return false;
-    if (!matchesExceptionPath(filePath, ex.path, baseDir)) return false;
+    if (!matchesExceptionPath(filePath, ex.path, baseDir, true)) return false;
     return ex.ops.includes("any") || ex.ops.includes(normalizedOp);
   });
 }
 
+// The "scan" op must be explicit: "any" predates it and means "all hook ops".
+// Treating existing ops:[any] exceptions as scan exceptions would silently
+// disable policy-rule matching at the commit gate for 0.2.3 policies.
 export function matchesScanException(
   filePath: string,
   exceptions: PolicyException[],
@@ -62,7 +72,7 @@ export function matchesScanException(
 ): boolean {
   return exceptions.some((ex) => {
     if (!ex.path) return false;
-    if (!(ex.ops.includes("scan") || ex.ops.includes("any"))) return false;
-    return matchesExceptionPath(filePath, ex.path, baseDir);
+    if (!ex.ops.includes("scan")) return false;
+    return matchesExceptionPath(filePath, ex.path, baseDir, false);
   });
 }

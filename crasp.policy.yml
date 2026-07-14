@@ -10,19 +10,14 @@ rules:
     message: "Credential theft guidance detected."
 
 # Exceptions: pre-approve specific file access (hook ask dialogs) or skip
-# policy-rule matching in content scans ('scan' covers check --staged and
-# crasp scan; secrets are still detected in excepted files). 'any' covers
-# every op, including scan.
+# policy-rule matching in content scans. The 'scan' op must be explicit —
+# 'any' covers only hook ops. Excepted files are still scanned for secrets.
+# Scan globs resolve relative to the repo root. (.claude/, scenarios/ and other
+# default-excluded paths get rule suppression in staged scans automatically.)
 exceptions:
   - path: "README.md"
     ops: [scan]
     reason: "Documents the builtin rules; quotes their trigger patterns as examples"
-  - path: ".claude/CLAUDE.md"
-    ops: [scan]
-    reason: "Architecture doc lists builtin rule ids and example patterns"
-  - path: ".claude/skills/**"
-    ops: [scan]
-    reason: "Skill docs describe rule authoring and quote pattern examples"
   - path: "src/cli/commands/setup.ts"
     ops: [scan]
     reason: "STARTER_POLICY template quotes the credential-theft pattern"

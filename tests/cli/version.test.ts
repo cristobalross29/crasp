@@ -7,8 +7,11 @@ import { CLI_VERSION } from "../../src/version.js";
 const CLI = path.resolve("dist/index.js");
 
 describe("version single-source", () => {
-  it("CLI --version matches CLI_VERSION and is 0.2.3", () => {
-    expect(CLI_VERSION).toBe("0.2.3");
+  it("CLI --version, CLI_VERSION, and package.json version all agree", async () => {
+    const pkg = JSON.parse(
+      await readFile(path.resolve("package.json"), "utf8")
+    ) as { version: string };
+    expect(CLI_VERSION).toBe(pkg.version);
     const result = spawnSync(process.execPath, [CLI, "--version"], { encoding: "utf8" });
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe(CLI_VERSION);

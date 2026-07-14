@@ -215,15 +215,18 @@ separate scanner family in `src/core/scanner/secrets.ts` with `secret-*` rule id
 (see `secret-rule-ids.ts`; the legacy `token-leakage` id was retired).
 
 Content scans (`check --staged`, `check <paths>`, `scan`, MCP `crasp_scan`) honor
-policy exceptions with the `scan` (or `any`) op via `matchesScanException()` —
-enforced centrally in `scanFile()`/`scanContentWithExceptions()`. An excepted file
-skips policy rules but is still scanned for secrets, and is counted in
+policy exceptions with an **explicit** `scan` op via `matchesScanException()` —
+enforced centrally in `scanFile()`/`scanContentWithExceptions()`. `any` covers only
+hook ops (pre-0.2.4 policies must not silently lose rule matching), and scan globs
+resolve against the project root only — no basename tier, unlike hook exceptions. An
+excepted file skips policy rules but is still scanned for secrets, and is counted in
 `ScanSummary.exceptedFiles` (surfaced in terminal output — never silent). The staged
-check scans git index blobs (`git show :<path>`), resolves paths and exception globs
-against `git rev-parse --show-toplevel`, and skips the self-referential
-`defaultExcludedFiles` set (`crasp.policy.yml`, `.env.example`, …). Pathless surfaces
-(`check --stdin`, MCP `crasp_check`, hook content checks) never consult scan
-exceptions.
+check scans git index blobs (`git show :<path>`, `--diff-filter=ACMRT`, NUL-safe),
+resolves paths, config, and exception globs against `git rev-parse --show-toplevel`,
+and treats default-excluded paths (`crasp.policy.yml`, `.env.example`, `.claude/`,
+`scenarios/`, …) as rule-suppressed-but-secret-scanned rather than skipping them.
+Pathless surfaces (`check --stdin`, MCP `crasp_check`, hook content checks) never
+consult scan exceptions.
 
 ## Conventions
 

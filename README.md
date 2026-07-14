@@ -171,9 +171,10 @@ exceptions:
 
 An excepted file skips policy-rule matching but is **still scanned for secrets** — a
 real leaked key in it blocks the commit regardless. Excepted files are reported in the
-output, never skipped silently. `ops: [any]` covers every operation including `scan`;
-exceptions cannot apply to pathless checks (`check --stdin`, MCP `crasp_check`).
-Path globs resolve relative to the project root.
+output, never skipped silently. The `scan` op must be explicit: `ops: [any]` covers
+only hook operations (write `ops: [any, scan]` for both), and exceptions cannot apply
+to pathless checks (`check --stdin`, MCP `crasp_check`). Scan globs resolve relative
+to the project root (use `**/NOTES.md` to match at any depth; dotfiles are included).
 
 **Upgrading an existing install?** Re-run `npx @crasp/cli@latest setup` — hooks and the
 shared bundle update automatically. Run `npx @crasp/cli@latest setup --force` if you also want

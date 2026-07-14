@@ -7,7 +7,7 @@ import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
 import {
-  isDefaultExcludedFile,
+  isDefaultExcludedPath,
   scanContent,
   scanContentWithExceptions,
   scanDirectory,
@@ -108,52 +108,57 @@ async function gitToplevel(): Promise<string> {
 
 async function stagedFiles(toplevel: string): Promise<string[]> {
   // -z: NUL-separated so filenames with spaces/newlines survive.
-  // --diff-filter=ACMR: skip deletions — there is no blob to scan.
+  // --diff-filter=ACMRT: skip only deletions (no blob to scan); T (typechange,
+  // e.g. symlink replaced by a regular file) must be scanned like any add.
   const { stdout } = await execFileAsync(
     "git",
-    ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+    ["diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z"],
     { cwd: toplevel }
   );
 
-  return stdout
-    .split("\0")
-    .filter(Boolean)
-    .filter((relPath) => !isDefaultExcludedFile(path.basename(relPath)));
+  return stdout.split("\0").filter(Boolean);
 }
 
-const STAGED_MAX_FILE_BYTES = 1_000_000;
+const STAGED_MAX_FILE_BYTES = 5_000_000;
 
 async function scanStagedBlobs(
   toplevel: string,
   relPaths: string[],
   policy: Policy
 ): Promise<FileScanResult[]> {
-  const results: FileScanResult[] = [];
-
-  for (const relPath of relPaths) {
-    const filePath = path.join(toplevel, relPath);
-    try {
-      // Scan the staged blob, not the working tree — the two can diverge.
-      const { stdout } = await execFileAsync("git", ["show", `:${relPath}`], {
-        cwd: toplevel,
-        maxBuffer: STAGED_MAX_FILE_BYTES
-      });
-      results.push(scanContentWithExceptions(stdout, filePath, policy, toplevel));
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to read staged blob.";
-      results.push({
-        filePath,
-        matches: [],
-        scanned: false,
-        error: message.includes("maxBuffer")
-          ? `Skipped staged file larger than ${STAGED_MAX_FILE_BYTES} bytes.`
-          : message
-      });
-    }
-  }
-
-  return results;
+  return Promise.all(
+    relPaths.map(async (relPath): Promise<FileScanResult> => {
+      const filePath = path.join(toplevel, relPath);
+      try {
+        // Scan the staged blob, not the working tree — the two can diverge.
+        const { stdout } = await execFileAsync("git", ["show", `:${relPath}`], {
+          cwd: toplevel,
+          maxBuffer: STAGED_MAX_FILE_BYTES
+        });
+        // Default-excluded paths (crasp.policy.yml, .env templates, .claude/,
+        // scenarios/, …) are never hard-skipped here: policy rules are
+        // suppressed like a scan exception, but secret detection still runs.
+        return scanContentWithExceptions(
+          stdout,
+          filePath,
+          policy,
+          toplevel,
+          isDefaultExcludedPath(relPath)
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to read staged blob.";
+        return {
+          filePath,
+          matches: [],
+          scanned: false,
+          error: message.includes("maxBuffer")
+            ? `Skipped staged file larger than ${STAGED_MAX_FILE_BYTES} bytes.`
+            : message
+        };
+      }
+    })
+  );
 }
 
 async function scanPathList(
@@ -192,7 +197,7 @@ async function scanPathList(
 }
 
 async function loadMergedPolicy(baseDir: string = process.cwd()): Promise<Policy> {
-  const config = await loadConfig();
+  const config = await loadConfig(baseDir);
   const configuredPolicyPath = config?.policyPath
     ? path.resolve(baseDir, config.policyPath)
     : path.resolve(baseDir, "crasp.policy.yml");

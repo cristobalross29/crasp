@@ -25,14 +25,11 @@ export const policyExceptionSchema = z
   .refine((v) => v.path !== undefined || v.command !== undefined, {
     message: "An exception must have at least one of 'path' or 'command'",
   })
-  .refine(
-    (v) =>
-      !v.ops.some((op) => op === "read" || op === "write" || op === "edit" || op === "scan") ||
-      v.path !== undefined,
-    { message: "'read', 'write', 'edit' and 'scan' ops require a 'path'" }
-  )
-  .refine((v) => !v.ops.includes("bash") || v.command !== undefined, {
-    message: "'bash' ops require a 'command'",
+  // Only the NEW scan op gets a stricter shape — tightening the pre-existing
+  // ops would reject 0.2.3-valid policies, and a policy parse failure silently
+  // degrades hooks to builtin-only.
+  .refine((v) => !v.ops.includes("scan") || v.path !== undefined, {
+    message: "'scan' ops require a 'path'",
   });
 
 export const policySecretsSchema = z.object({

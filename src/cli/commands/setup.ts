@@ -35,9 +35,9 @@ rules:
     message: "Credential theft guidance detected."
 
 # Exceptions: pre-approve specific file access (hook ask dialogs) or skip
-# policy-rule matching in content scans ('scan' covers check --staged and
-# crasp scan; secrets are still detected in excepted files). 'any' covers
-# every op, including scan.
+# policy-rule matching in content scans. The 'scan' op must be explicit —
+# 'any' covers only hook ops. Excepted files are still scanned for secrets,
+# and scan globs resolve relative to the repo root.
 # Examples:
 # exceptions:
 #   - path: ".env.local"

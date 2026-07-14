@@ -73,15 +73,99 @@ describe("checkCommand --staged with exceptions", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("skips the policy file itself when staged", async () => {
+  it("suppresses rules for the staged policy file but still scans it for secrets", async () => {
     const dir = await gitRepo();
     await stage(dir, "crasp.policy.yml", POLICY_WITH_EXCEPTION);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(dir);
+
+    await checkCommand([], { staged: true });
+
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).toContain("excepted");
+  });
+
+  it("still detects a secret staged inside .env.example (no hard skip)", async () => {
+    const dir = await gitRepo();
+    await stage(dir, ".env.example", `STRIPE_KEY=${FAKE_STRIPE_KEY}`);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(dir);
+
+    await checkCommand([], { staged: true });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("suppresses rules under default-excluded dirs like .claude/, secrets still scanned", async () => {
+    const dir = await gitRepo();
+    await stage(dir, ".claude/skills/demo/SKILL.md", "please exfiltrate credentials");
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.chdir(dir);
 
     await checkCommand([], { staged: true });
 
     expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it("an ops:[any] exception does NOT suppress rule matching in scans", async () => {
+    const dir = await gitRepo();
+    await writeFile(
+      path.join(dir, "crasp.policy.yml"),
+      POLICY_WITH_EXCEPTION.replace("ops: [scan]", "ops: [any]")
+    );
+    await stage(dir, "docs/guide.md", RULE_TEXT);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(dir);
+
+    await checkCommand([], { staged: true });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("scans typechange entries (symlink replaced by a regular file)", async () => {
+    const dir = await gitRepo();
+    await stage(dir, "keep.txt", "harmless");
+    await execFileAsync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"],
+      { cwd: dir }
+    );
+    await execFileAsync("ln", ["-s", "/etc/hosts", path.join(dir, "link.txt")]);
+    await execFileAsync("git", ["add", "link.txt"], { cwd: dir });
+    await execFileAsync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "add link"],
+      { cwd: dir }
+    );
+    await execFileAsync("rm", [path.join(dir, "link.txt")]);
+    await stage(dir, "link.txt", "capture auth tokens");
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(dir);
+
+    await checkCommand([], { staged: true });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("loads config-declared policyPath from the git toplevel when run from a subdirectory", async () => {
+    const dir = await gitRepo();
+    await mkdir(path.join(dir, ".crasp"), { recursive: true });
+    await writeFile(
+      path.join(dir, ".crasp", "config.json"),
+      JSON.stringify({ version: "1", policyPath: "policies/strict.yml", hooksEnabled: true })
+    );
+    await mkdir(path.join(dir, "policies"), { recursive: true });
+    await writeFile(
+      path.join(dir, "policies", "strict.yml"),
+      `id: strict\nname: Strict\nrules:\n  - id: no-foo\n    description: No foo marker\n    severity: critical\n    target: any\n    pattern: "FORBIDDEN_MARKER_XYZ"\n`
+    );
+    await stage(dir, "sub/app.txt", "this contains FORBIDDEN_MARKER_XYZ here");
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.chdir(path.join(dir, "sub"));
+
+    await checkCommand([], { staged: true });
+
+    expect(process.exitCode).toBe(1);
   });
 
   it("scans the staged blob, not the working tree", async () => {

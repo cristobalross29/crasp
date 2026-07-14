@@ -150,13 +150,12 @@ export function scanContentWithExceptions(
   content: string,
   filePath: string,
   policy: Policy,
-  baseDir?: string
+  baseDir?: string,
+  forceExcepted = false
 ): FileScanResult {
-  const excepted = matchesScanException(
-    filePath,
-    policy.exceptions ?? [],
-    baseDir
-  );
+  const excepted =
+    forceExcepted ||
+    matchesScanException(filePath, policy.exceptions ?? [], baseDir);
   const result = scanContent(
     content,
     excepted ? { ...policy, rules: [] } : policy,
@@ -236,9 +235,17 @@ export function summarizeScanResults(results: FileScanResult[]): ScanSummary {
   };
 }
 
-/** Files the directory walker skips by default (self-referential/template files). */
-export function isDefaultExcludedFile(basename: string): boolean {
-  return defaultExcludedFiles.has(basename);
+/**
+ * True when a repo-relative path is one the directory walker skips by default —
+ * a self-referential/template file or anything under a default-excluded
+ * directory. Staged scans use this to suppress policy rules (secrets still
+ * scan) so the commit gate agrees with `crasp check`/`crasp scan` on the same tree.
+ */
+export function isDefaultExcludedPath(relPath: string): boolean {
+  const segments = relPath.split(/[\\/]/).filter(Boolean);
+  if (segments.length === 0) return false;
+  if (defaultExcludedFiles.has(segments[segments.length - 1])) return true;
+  return segments.slice(0, -1).some((dir) => defaultExcludedDirs.has(dir));
 }
 
 async function collectFiles(
