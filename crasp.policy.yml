@@ -18,6 +18,9 @@ exceptions:
   - path: "README.md"
     ops: [scan]
     reason: "Documents the builtin rules; quotes their trigger patterns as examples"
+  - path: "CHANGELOG.md"
+    ops: [scan]
+    reason: "Release notes quote rule patterns and detection examples"
   - path: "src/cli/commands/setup.ts"
     ops: [scan]
     reason: "STARTER_POLICY template quotes the credential-theft pattern"

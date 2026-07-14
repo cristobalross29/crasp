@@ -7,6 +7,44 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.4] - 2026-07-14
+
+### Added
+- **Scan exceptions — an explicit `scan` op for policy exceptions.** Files that
+  legitimately quote rule patterns (docs, security guides, rule tests) can be
+  excepted from policy-rule matching in `check --staged`, `check <paths>`,
+  `crasp scan`, and MCP `crasp_scan`. Excepted files are **still scanned for
+  secrets** and are always reported (`ScanSummary.exceptedFiles` + a terminal
+  note) — never skipped silently. `ops: [any]` deliberately does NOT imply
+  `scan`, so pre-0.2.4 policies keep their exact hook-only meaning. Scan globs
+  resolve relative to the repo root (no basename tier, dotfiles included).
+- **Per-rule `caseSensitive` flag documented in the README** (shipped in 0.2.3).
+
+### Changed
+- **`check --staged` scans the git index, not the working tree.** The gate now
+  reads staged blobs via `git show :<path>`, so a file edited after `git add`
+  can't slip modified content past the check and unstaged changes aren't
+  falsely flagged. Enumeration is NUL-safe, includes typechange entries, and
+  skips only deletions (`--diff-filter=ACMRT -z`); blobs are read in parallel
+  with a 5 MB cap; staged paths, exception globs, and `.crasp/config.json` all
+  resolve against `git rev-parse --show-toplevel`, so subdirectory invocations
+  work.
+- **Default-excluded paths are rule-suppressed, not skipped, in staged scans.**
+  `crasp.policy.yml`, `.env.example`-style templates, and files under
+  default-excluded directories (`.claude/`, `scenarios/`, …) get the same
+  treatment as scan exceptions — policy rules suppressed, secrets still
+  scanned — instead of being invisible to the gate.
+
+### Fixed
+- **`mergeWithBuiltin()` dropped the user policy's `secrets.allowlist`**, so
+  allowlists never reached CLI or MCP scans.
+- **Exception globs now match dotfiles and dot-directories** (`docs/**` covers
+  `docs/.vitepress/…`).
+- Policy schema keeps accepting every 0.2.3-valid exception shape; only the
+  new `scan` op requires a `path`.
+
+---
+
 ## [0.2.3] - 2026-07-12
 
 ### Changed
@@ -303,6 +341,7 @@ Initial release.
   or HTML output.
 
 [Unreleased]: https://github.com/cristobalross29/crasp/compare/v0.2.3...HEAD
+[0.2.4]: https://github.com/cristobalross29/crasp/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/cristobalross29/crasp/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/cristobalross29/crasp/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/cristobalross29/crasp/compare/v0.2.0...v0.2.1
