@@ -368,7 +368,7 @@ describe("setupCommand", () => {
       expect(policy).toContain("# exceptions:");
       expect(policy).toContain("# Exceptions:");
       expect(policy).toContain("ops: [read]");
-      expect(policy).toContain("ops: [write, edit]");
+      expect(policy).toContain("ops: [scan]");
     } finally {
       process.chdir(originalCwd);
       await rm(freshRoot, { recursive: true, force: true });

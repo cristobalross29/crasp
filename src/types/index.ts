@@ -41,7 +41,7 @@ export interface PolicyRule {
   caseSensitive?: boolean;
 }
 
-export type ExceptionOp = "read" | "write" | "edit" | "bash" | "any";
+export type ExceptionOp = "read" | "write" | "edit" | "bash" | "scan" | "any";
 
 export interface PolicyException {
   id?: string;
@@ -78,6 +78,8 @@ export interface FileScanResult {
   filePath: string;
   matches: FileScanMatch[];
   scanned: boolean;
+  /** Policy-rule matching was suppressed by a scan exception; secrets still scanned. */
+  excepted?: boolean;
   error?: string;
 }
 
@@ -86,6 +88,7 @@ export interface ScanSummary {
   scannedFiles: number;
   matchedFiles: number;
   totalMatches: number;
+  exceptedFiles: number;
   bySeverity: Record<Severity, number>;
 }
 

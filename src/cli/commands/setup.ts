@@ -34,15 +34,18 @@ rules:
     pattern: "steal (browser )?passwords?|credential theft|dump (chrome|firefox|browser|saved) (login|credential|password)|exfiltrat(e|ing) (credentials?|tokens?|cookies?|passwords?|secrets?)|extract (saved|stored|browser) (credentials?|passwords?|tokens?|logins?)|harvest (credentials?|passwords?|auth tokens?)"
     message: "Credential theft guidance detected."
 
-# Exceptions: pre-approve specific file access to bypass the ask dialog.
+# Exceptions: pre-approve specific file access (hook ask dialogs) or skip
+# policy-rule matching in content scans ('scan' covers check --staged and
+# crasp scan; secrets are still detected in excepted files). 'any' covers
+# every op, including scan.
 # Examples:
 # exceptions:
 #   - path: ".env.local"
 #     ops: [read]
 #     reason: "Claude needs to read config for setup tasks"
-#   - path: ".env.local"
-#     ops: [write, edit]
-#     reason: "I manage .env.local directly with Claude's help"
+#   - path: "docs/**"
+#     ops: [scan]
+#     reason: "Docs quote rule patterns as examples"
 `;
 
 const STARTER_SCENARIOS: Record<string, string> = {

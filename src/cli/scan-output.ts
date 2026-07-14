@@ -24,6 +24,7 @@ export function printTerminalScanResults(
 
   if (summary.totalMatches === 0) {
     console.log(options.emptyMessage(summary.scannedFiles));
+    printExceptedNote(summary.exceptedFiles);
     if (skippedFiles > 0) {
       console.log(`Skipped ${skippedFiles} files that could not be scanned.`);
     }
@@ -59,6 +60,7 @@ export function printTerminalScanResults(
 
   console.log(table.toString());
   console.log(options.foundMessage(summary.totalMatches, summary.matchedFiles));
+  printExceptedNote(summary.exceptedFiles);
 
   if (summary.totalMatches > renderedRows) {
     console.log(
@@ -68,6 +70,16 @@ export function printTerminalScanResults(
 
   if (skippedFiles > 0) {
     console.log(`Skipped ${skippedFiles} files that could not be scanned.`);
+  }
+}
+
+function printExceptedNote(exceptedFiles: number): void {
+  if (exceptedFiles > 0) {
+    console.log(
+      `Rule matching excepted by policy in ${exceptedFiles} file${
+        exceptedFiles === 1 ? "" : "s"
+      } (secrets still scanned).`
+    );
   }
 }
 

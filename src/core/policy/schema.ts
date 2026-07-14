@@ -16,11 +16,23 @@ export const policyExceptionSchema = z
     id: z.string().optional(),
     path: z.string().min(1).optional(),
     command: z.string().min(1).optional(),
-    ops: z.array(z.enum(["read", "write", "edit", "bash", "any"])).min(1).default(["any"]),
+    ops: z
+      .array(z.enum(["read", "write", "edit", "bash", "scan", "any"]))
+      .min(1)
+      .default(["any"]),
     reason: z.string().optional(),
   })
   .refine((v) => v.path !== undefined || v.command !== undefined, {
     message: "An exception must have at least one of 'path' or 'command'",
+  })
+  .refine(
+    (v) =>
+      !v.ops.some((op) => op === "read" || op === "write" || op === "edit" || op === "scan") ||
+      v.path !== undefined,
+    { message: "'read', 'write', 'edit' and 'scan' ops require a 'path'" }
+  )
+  .refine((v) => !v.ops.includes("bash") || v.command !== undefined, {
+    message: "'bash' ops require a 'command'",
   });
 
 export const policySecretsSchema = z.object({

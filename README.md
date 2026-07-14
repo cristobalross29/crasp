@@ -158,6 +158,23 @@ exceptions:
 Command patterns are regular expressions matched against the whole command — anchor
 them (`^…$`) so a permissive pattern doesn't approve more than you intend.
 
+Files that legitimately quote rule patterns — docs, security guides, the tests for
+your own rules — will trip `crasp check --staged` and `crasp scan`. Add a `scan`
+exception for them:
+
+```yaml
+exceptions:
+  - path: "docs/**"
+    ops: [scan]
+    reason: "Docs quote rule patterns as examples"
+```
+
+An excepted file skips policy-rule matching but is **still scanned for secrets** — a
+real leaked key in it blocks the commit regardless. Excepted files are reported in the
+output, never skipped silently. `ops: [any]` covers every operation including `scan`;
+exceptions cannot apply to pathless checks (`check --stdin`, MCP `crasp_check`).
+Path globs resolve relative to the project root.
+
 **Upgrading an existing install?** Re-run `npx @crasp/cli@latest setup` — hooks and the
 shared bundle update automatically. Run `npx @crasp/cli@latest setup --force` if you also want
 the CLAUDE.md section text refreshed.

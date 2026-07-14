@@ -22,7 +22,7 @@ node dist/index.js hook-log --summary             # 30-day stats only
 node dist/index.js mcp                            # start MCP server (stdio)
 node dist/index.js run <scenario.yml>             # run a scenario transcript
 node dist/index.js scan <path>                    # scan files for policy violations
-node dist/index.js check --staged                 # scan staged git files
+node dist/index.js check --staged                 # scan staged git blobs (index, not worktree)
 node dist/index.js policy list                    # show active rules
 node dist/index.js status                         # verify setup
 node dist/index.js panel                          # open live dashboard for all registered projects
@@ -213,6 +213,17 @@ Defined in `src/core/patterns/builtin.ts`. Always active, merged with the user's
 Secret detection (leaked API keys, `sk-*`, `github_pat_*`, bearer tokens) is a
 separate scanner family in `src/core/scanner/secrets.ts` with `secret-*` rule ids
 (see `secret-rule-ids.ts`; the legacy `token-leakage` id was retired).
+
+Content scans (`check --staged`, `check <paths>`, `scan`, MCP `crasp_scan`) honor
+policy exceptions with the `scan` (or `any`) op via `matchesScanException()` —
+enforced centrally in `scanFile()`/`scanContentWithExceptions()`. An excepted file
+skips policy rules but is still scanned for secrets, and is counted in
+`ScanSummary.exceptedFiles` (surfaced in terminal output — never silent). The staged
+check scans git index blobs (`git show :<path>`), resolves paths and exception globs
+against `git rev-parse --show-toplevel`, and skips the self-referential
+`defaultExcludedFiles` set (`crasp.policy.yml`, `.env.example`, …). Pathless surfaces
+(`check --stdin`, MCP `crasp_check`, hook content checks) never consult scan
+exceptions.
 
 ## Conventions
 

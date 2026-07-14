@@ -26,21 +26,43 @@ export function matchesBashException(
   });
 }
 
+function matchesExceptionPath(
+  filePath: string,
+  exceptionPath: string,
+  baseDir: string
+): boolean {
+  const toSlashes = (p: string): string => p.split(path.sep).join("/");
+  const basename = path.basename(filePath);
+  const relPath = toSlashes(path.normalize(path.relative(baseDir, filePath)));
+  return (
+    micromatch.isMatch(basename, exceptionPath) ||
+    micromatch.isMatch(relPath, exceptionPath) ||
+    micromatch.isMatch(toSlashes(filePath), exceptionPath)
+  );
+}
+
 export function matchesException(
   filePath: string,
   op: HookTool,
-  exceptions: PolicyException[]
+  exceptions: PolicyException[],
+  baseDir: string = process.cwd()
 ): boolean {
-  const basename = path.basename(filePath);
-  const relPath = path.normalize(path.relative(process.cwd(), filePath));
   const normalizedOp = OP_MAP[op];
   return exceptions.some((ex) => {
     if (!ex.path) return false;
-    const pathMatches =
-      micromatch.isMatch(basename, ex.path) ||
-      micromatch.isMatch(relPath, ex.path) ||
-      micromatch.isMatch(filePath, ex.path);
-    if (!pathMatches) return false;
+    if (!matchesExceptionPath(filePath, ex.path, baseDir)) return false;
     return ex.ops.includes("any") || ex.ops.includes(normalizedOp);
+  });
+}
+
+export function matchesScanException(
+  filePath: string,
+  exceptions: PolicyException[],
+  baseDir: string = process.cwd()
+): boolean {
+  return exceptions.some((ex) => {
+    if (!ex.path) return false;
+    if (!(ex.ops.includes("scan") || ex.ops.includes("any"))) return false;
+    return matchesExceptionPath(filePath, ex.path, baseDir);
   });
 }

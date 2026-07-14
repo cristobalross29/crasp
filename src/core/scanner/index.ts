@@ -8,6 +8,7 @@ import type {
   Severity
 } from "../../types/index.js";
 import { detectSecrets, maskSpan, maskSpanInLine } from "./secrets.js";
+import { matchesScanException } from "../policy/exceptions.js";
 
 const RULE_NAMES: Record<string, string> = {
   "secret-aws-akia": "AWS access key",
@@ -47,6 +48,8 @@ export interface ScanDirectoryOptions {
   include?: string[];
   exclude?: string[];
   maxFileBytes?: number;
+  /** Base directory for matching relative exception path globs (default: cwd). */
+  baseDir?: string;
 }
 
 const defaultExcludedDirs = new Set([
@@ -138,10 +141,34 @@ export function scanContent(
   };
 }
 
+/**
+ * Scan already-loaded content, honoring the policy's scan exceptions: for an
+ * excepted path, policy-rule matching is suppressed but secret detection still
+ * runs, and the result is marked `excepted`.
+ */
+export function scanContentWithExceptions(
+  content: string,
+  filePath: string,
+  policy: Policy,
+  baseDir?: string
+): FileScanResult {
+  const excepted = matchesScanException(
+    filePath,
+    policy.exceptions ?? [],
+    baseDir
+  );
+  const result = scanContent(
+    content,
+    excepted ? { ...policy, rules: [] } : policy,
+    filePath
+  );
+  return excepted ? { ...result, excepted: true } : result;
+}
+
 export async function scanFile(
   filePath: string,
   policy: Policy,
-  options: Pick<ScanDirectoryOptions, "maxFileBytes"> = {}
+  options: Pick<ScanDirectoryOptions, "maxFileBytes" | "baseDir"> = {}
 ): Promise<FileScanResult> {
   try {
     const fileStat = await stat(filePath);
@@ -157,7 +184,7 @@ export async function scanFile(
     }
 
     const content = await readFile(filePath, "utf8");
-    return scanContent(content, policy, filePath);
+    return scanContentWithExceptions(content, filePath, policy, options.baseDir);
   } catch (error) {
     return {
       filePath,
@@ -171,7 +198,7 @@ export async function scanFile(
 export async function scanFiles(
   filePaths: string[],
   policy: Policy,
-  options: Pick<ScanDirectoryOptions, "maxFileBytes"> = {}
+  options: Pick<ScanDirectoryOptions, "maxFileBytes" | "baseDir"> = {}
 ): Promise<FileScanResult[]> {
   return Promise.all(
     filePaths.map((filePath) => scanFile(filePath, policy, options))
@@ -203,8 +230,15 @@ export function summarizeScanResults(results: FileScanResult[]): ScanSummary {
     scannedFiles: results.filter((result) => result.scanned).length,
     matchedFiles: results.filter((result) => result.matches.length > 0).length,
     totalMatches,
+    exceptedFiles: results.filter((result) => result.scanned && result.excepted)
+      .length,
     bySeverity
   };
+}
+
+/** Files the directory walker skips by default (self-referential/template files). */
+export function isDefaultExcludedFile(basename: string): boolean {
+  return defaultExcludedFiles.has(basename);
 }
 
 async function collectFiles(

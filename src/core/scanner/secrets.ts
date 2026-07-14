@@ -598,8 +598,10 @@ function detectGenericEntropy(
 
 // Precedence note:
 // - allowlist/inline-ignore suppress secret findings by VALUE or LINE (this function).
-// - policy `exceptions` are PATH/OP based — they skip sensitive-path dialogs, not
-//   content scanning. These are independent mechanisms that do not interact.
+// - policy `exceptions` are PATH/OP based: hook ops skip sensitive-path dialogs, and
+//   the `scan` op suppresses policy-RULE matching in content scans — but secret
+//   detection always runs, even in scan-excepted files. Suppressing a specific
+//   secret finding requires this allowlist, never an exception.
 
 // Compile an allowlist entry as a regex; fall back to literal equality on invalid pattern.
 // Returns a function that tests a raw captured value.

@@ -6,7 +6,13 @@ import { printTerminalScanResults } from "../scan-output.js";
 import { loadConfig } from "../../core/config/index.js";
 import { loadPolicy, policyExists } from "../../core/policy/loader.js";
 import { mergeWithBuiltin } from "../../core/patterns/index.js";
-import { scanContent, scanDirectory, scanFiles } from "../../core/scanner/index.js";
+import {
+  isDefaultExcludedFile,
+  scanContent,
+  scanContentWithExceptions,
+  scanDirectory,
+  scanFiles
+} from "../../core/scanner/index.js";
 import { checkSensitivePath } from "../../core/scanner/sensitive-paths.js";
 import { matchesException, matchesBashException } from "../../core/policy/exceptions.js";
 import { appendHookLogEntry } from "../../core/hook-log/index.js";
@@ -69,12 +75,18 @@ export async function checkCommand(
     process.exit(0);
   }
 
-  const policy = await loadMergedPolicy();
-  const filePaths = options.staged ? await stagedFiles() : paths;
-  const results =
-    options.staged || filePaths.length > 0
-      ? await scanPathList(filePaths, policy)
-      : await scanDirectory(process.cwd(), policy);
+  let results: FileScanResult[];
+  if (options.staged) {
+    const toplevel = await gitToplevel();
+    const policy = await loadMergedPolicy(toplevel);
+    results = await scanStagedBlobs(toplevel, await stagedFiles(toplevel), policy);
+  } else {
+    const policy = await loadMergedPolicy();
+    results =
+      paths.length > 0
+        ? await scanPathList(paths, policy)
+        : await scanDirectory(process.cwd(), policy);
+  }
 
   printTerminalScanResults(results, {
     emptyMessage: (scannedFiles) =>
@@ -86,17 +98,62 @@ export async function checkCommand(
   process.exitCode = hasSeverityAtOrAbove(results, "high") ? 1 : 0;
 }
 
-async function stagedFiles(): Promise<string[]> {
+async function gitToplevel(): Promise<string> {
   const { stdout } = await execFileAsync("git", [
-    "diff",
-    "--cached",
-    "--name-only"
+    "rev-parse",
+    "--show-toplevel"
   ]);
+  return stdout.trim();
+}
+
+async function stagedFiles(toplevel: string): Promise<string[]> {
+  // -z: NUL-separated so filenames with spaces/newlines survive.
+  // --diff-filter=ACMR: skip deletions — there is no blob to scan.
+  const { stdout } = await execFileAsync(
+    "git",
+    ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+    { cwd: toplevel }
+  );
 
   return stdout
-    .split(/\r?\n/)
-    .map((filePath) => filePath.trim())
-    .filter(Boolean);
+    .split("\0")
+    .filter(Boolean)
+    .filter((relPath) => !isDefaultExcludedFile(path.basename(relPath)));
+}
+
+const STAGED_MAX_FILE_BYTES = 1_000_000;
+
+async function scanStagedBlobs(
+  toplevel: string,
+  relPaths: string[],
+  policy: Policy
+): Promise<FileScanResult[]> {
+  const results: FileScanResult[] = [];
+
+  for (const relPath of relPaths) {
+    const filePath = path.join(toplevel, relPath);
+    try {
+      // Scan the staged blob, not the working tree — the two can diverge.
+      const { stdout } = await execFileAsync("git", ["show", `:${relPath}`], {
+        cwd: toplevel,
+        maxBuffer: STAGED_MAX_FILE_BYTES
+      });
+      results.push(scanContentWithExceptions(stdout, filePath, policy, toplevel));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to read staged blob.";
+      results.push({
+        filePath,
+        matches: [],
+        scanned: false,
+        error: message.includes("maxBuffer")
+          ? `Skipped staged file larger than ${STAGED_MAX_FILE_BYTES} bytes.`
+          : message
+      });
+    }
+  }
+
+  return results;
 }
 
 async function scanPathList(
@@ -134,11 +191,11 @@ async function scanPathList(
   return results;
 }
 
-async function loadMergedPolicy(): Promise<Policy> {
+async function loadMergedPolicy(baseDir: string = process.cwd()): Promise<Policy> {
   const config = await loadConfig();
   const configuredPolicyPath = config?.policyPath
-    ? path.resolve(config.policyPath)
-    : path.resolve("crasp.policy.yml");
+    ? path.resolve(baseDir, config.policyPath)
+    : path.resolve(baseDir, "crasp.policy.yml");
   const userPolicy =
     configuredPolicyPath && (await policyExists(configuredPolicyPath))
       ? await loadPolicy(configuredPolicyPath)
